@@ -1,0 +1,50 @@
+---
+title: "Initial EDA"
+author: "Bruce Mallory"
+date: "11/13/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load("maps","tmap", "tmaptools", "tigris",
+               "tidyverse","drat", "magrittr", "sf", "dplyr", "readx1")
+```
+
+```{r cars}
+data <- read.csv("dataverse_files/1976-2018-house2.csv")
+data_1976 <- data %>% filter(year==1976)
+group_cols <- c("state", "party")
+data_1976 %<>% group_by(across(all_of(group_cols))) %>%
+  summarise(votes = sum(candidatevotes), .groups="drop") %>% 
+  group_by(state) %>%
+  mutate(total = sum(votes))
+
+
+sums <- data_1976 %>% 
+  group_by(state, total=sum(votes))
+
+totals <- data %>%
+    group_by(state) %>%
+    mutate(total = sum(candidatevotes)) %>%
+    group_by(party, add=TRUE)
+
+%>%
+    mutate(per=paste0(round(100*count/countT,2),'%'))
+
+
+
+state_totals <- data_1976 %>% group_by(state) %>% summarize(total=sum(candidatevotes))
+
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
