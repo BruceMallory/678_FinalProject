@@ -1,0 +1,124 @@
+---
+title: "Workflow"
+author: "Bruce Mallory"
+date: "12/2/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load("HelpersMG", "readr", "ggplot2", "lmer4", "rstanarm", "dplyr")
+```
+
+## (1) Load election data
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+wget("https://dataverse.harvard.edu/api/access/datafile/:persistentId?persistentId=doi:10.7910/DVN/IG0UN2/ELBYL3")
+rslts <- read.table("ELBYL3", header = TRUE)
+
+state_abbrs <- read.csv("states.csv")
+state_abbrs <- filter(state_abbrs, Code != "DC")
+
+# Historical note.  In the data file, there was a column "special."  There were two sets of elections where special="TRUE."  Both is Texas.  One in 1996, the other 2006.  In the first the US District Court found that the redrawn districts were unconstitutional and ordered a special election to redo the primary election - then held a general election in December.  And again in 2006, the US Supreme Court found that numerous redrawn districts were unconstitutional and again ordered a new district map and a special election for the primaries with a December general election.  Since these special elections were "redoing" the primary elections in those districts, I've removed them from the data set, thus keeping only the general elections in the data set.  These were the only cases in the data file where there where special elections
+rslts <- filter(rslts, special=TRUE)
+
+# From the data set, I've kept seven columns for my analysis and filtered out for years
+rslts <- subset(rslts, select = c(year, state_po, district, candidate, party, candidatevotes, totalvotes))
+rslts <- filter(rslts, year >= 2000)
+
+# Need to adjust for uncontested elections.  So first created a data.frame of the districts/years where there was not both a democrat and republican running
+
+for (yr in seq(2000, 2018, 2)) {
+  #filter out just that year and put it in a frame
+  for (st in state_abbrs$Code) {
+    
+    
+  }
+  alone <- filter(rstls, year == yr &  )
+  for (dst in 1:max())
+    #filter out just that district and put it into a frame
+    #test for missing dem or repub...  filter(rslts, !(party=="democrat" & party=="republican") )
+ 
+}
+  
+
+
+rslts <- filter(rslts, party=="democrat" | party=="republican")
+
+rslts$percent <- 100*rslts$candidatevotes/rslts$totalvotes
+
+https://www.census.gov/library/publications/2011/compendia/usa-counties-2011.html#POP
+# to get .xls for population and .xls for area
+https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&ved=2ahUKEwjHkPmp4bftAhV5FlkFHbDHBvwQFjAAegQIAxAC&url=https%3A%2F%2Fwww2.census.gov%2Flibrary%2Fpublications%2F2011%2Fcompendia%2Fusa-counties%2Fexcel%2FMastdata.xls&usg=AOvVaw1ahgb3GWupqOb1UHYbZlMw
+# to get the code explanations for the above
+
+
+
+```
+
+## (2) An example data.frame to think through my analysis
+```{r}
+States <- read_csv("States.csv")
+
+edf12 <- data.frame(year = rep("2012", nrow(States)),
+                  state = States,
+                  clumping = round(abs(rnorm(nrow(States), 150, 200)), 1),
+                  group = rep(factor(c("Dem", "Rep", "Ind", "Split")), length.out=nrow(States)),
+                  votes = round(60 + rnorm(nrow(States), 0, 10), 1),
+                  seats = round(runif(nrow(States), 0, 100),1))
+edf14 <- data.frame(year = rep("2014", nrow(States)),
+                  state = States,
+                  clumping = round(abs(rnorm(nrow(States), 150, 200)), 1),
+                  group = rep(factor(c("Dem", "Rep", "Ind", "Split")), length.out=nrow(States)),
+                  votes = round(60 + rnorm(nrow(States), 0, 10), 1),
+                  seats = round(runif(nrow(States), 0, 100),1))
+edf <- rbind(edf12, edf14)
+
+ggplot(data=edf) +
+  geom_point(aes(x=votes, y=seats, color=group)) +
+  geom_smooth(method=lm, aes(x=votes, y=seats, color=group), se=FALSE)
+
+```
+## fitting
+```{r}
+fit <- lmer(seats ~ votes + (1+votes|group), data=edf)
+#unable to evaluate scaled gradientModel failed to converge: degenerate  Hessian with 1 negative eigenvalues
+
+fit <- lmer(seats ~ (1|group), data=edf)
+coef(fit)
+confint(fit)
+
+fit <- stan_lmer(seats ~ clumping + votes + (1+votes|group), control = list(adapt_delta = 0.99), data = edf)
+summary(fit)
+coef(fit)
+posterior_interval(fit)
+
+pairs(fit)
+```
+## Citations 
+#These two are for the Harvard dataverse files (need to figure out how to use LaTex to diplay the second one)
+<?xml version='1.0' encoding='UTF-8'?><xml><records><record><ref-type name="Dataset">59</ref-type><contributors><authors><author>MIT Election Data and Science Lab</author></authors><secondary-authors><author>MIT Election Data and Science Lab</author></secondary-authors></contributors><titles><title>U.S. House 1976–2018</title></titles><section>2017-11-01</section><dates><year>2017</year></dates><edition>DRAFT VERSION</edition><keywords><keyword>Elections</keyword></keywords><language>English</language><publisher>Harvard Dataverse</publisher><urls><related-urls><url>https://doi.org/10.7910/DVN/IG0UN2</url></related-urls></urls><electronic-resource-num>doi/10.7910/DVN/IG0UN2</electronic-resource-num></record></records></xml>
+
+@incollection{DVN/IG0UN2/ELBYL3_2017,
+author = {MIT Election Data and Science Lab},
+publisher = {Harvard Dataverse},
+title = {1976-2018-house2.tab},
+booktitle = {U.S. House 1976–2018},
+UNF = {UNF:6:8iuXTceVO5a7EpOwUD5UPw==},
+year = {2017},
+version = {V7},
+doi = {10.7910/DVN/IG0UN2/ELBYL3},
+url = {https://doi.org/10.7910/DVN/IG0UN2/ELBYL3}
+}
+
+## Copyright
+Copyright 2020 Bruce C. Mallory
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
