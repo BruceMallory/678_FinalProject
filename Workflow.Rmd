@@ -63,11 +63,18 @@ uncontested <- data.frame(
   percent = numeric()
 )
 
-num_uncontested <- data.frame(year = integer(), number = integer())
+
+YearlySummary <-
+  data.frame(year = integer(),
+             uncontested = integer(),
+             competitive = integer())
 
 #For each year, for each state, for each district: collect up the districts where there was not both a Democrat and a Republican
 for (yr in seq(1990, 2018, 2)) {
-  total <- 0
+  #count1 will count the number of uncontested races
+  #count2 will count the number of competitive races
+  count1 <- 0
+  count2 <- 435
   for (st in state_abbrs$Code) {
     low <-
       min(rslts[rslts$year == yr & rslts$state_po == st,]$district)
@@ -79,19 +86,25 @@ for (yr in seq(1990, 2018, 2)) {
                        rslts$district == dst,]$party == "democrat")
       Repubs <- (rslts[rslts$year == yr & rslts$state_po == st &
                          rslts$district == dst,]$party == "republican")
+      blowout <- (rslts[rslts$year == yr & rslts$state_po == st &
+                          rslts$district == dst,]$percent > 55)
+      if (sum(blowout, na.rm = TRUE) == 1) {
+        count2 <- count2 - 1
+      }
       
       #In some states (e.g. CA, WA) there are two candidates of the same party and none from the other party on the ballot (should count as uncontested).  And in other states(e.g. LA) there are several candidates from each party (should count as contested)
       
       if (sum(Dems, na.rm=TRUE) == 0 | sum(Repubs, na.rm=TRUE) == 0) {
         new <- rslts[rslts$year == yr & rslts$state_po == st &
                        rslts$district == dst,]
-        total <- total + 1
+        count1 <- count1 + 1
         uncontested <- rbind(uncontested, new)
       }
     }
   }
-  new <- data.frame(year = yr, number = total)
-  num_uncontested <- rbind(num_uncontested, new)
+  
+  new <- data.frame(year = yr, uncontested = count1, competitive=count2)
+  YearlySummary <- rbind(YearlySummary, new)
 }
 
 ```
