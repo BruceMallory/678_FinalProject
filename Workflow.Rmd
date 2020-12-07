@@ -7,47 +7,102 @@ output: pdf_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load("HelpersMG", "readr", "ggplot2", "lmer4", "rstanarm", "dplyr")
+pacman::p_load("HelpersMG", "readr", "ggplot2", "lmer4", "rstanarm", "dplyr", "stringr", "e1071")
 ```
 
 ## (1) Load election data
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
-wget("https://dataverse.harvard.edu/api/access/datafile/:persistentId?persistentId=doi:10.7910/DVN/IG0UN2/ELBYL3")
+wget(
+  "https://dataverse.harvard.edu/api/access/datafile/:persistentId?persistentId=doi:10.7910/DVN/IG0UN2/ELBYL3"
+)
 rslts <- read.table("ELBYL3", header = TRUE)
 
 state_abbrs <- read.csv("states.csv")
 state_abbrs <- filter(state_abbrs, Code != "DC")
 
 # Historical note.  In the data file, there was a column "special."  There were two sets of elections where special="TRUE."  Both is Texas.  One in 1996, the other 2006.  In the first the US District Court found that the redrawn districts were unconstitutional and ordered a special election to redo the primary election - then held a general election in December.  And again in 2006, the US Supreme Court found that numerous redrawn districts were unconstitutional and again ordered a new district map and a special election for the primaries with a December general election.  Since these special elections were "redoing" the primary elections in those districts, I've removed them from the data set, thus keeping only the general elections in the data set.  These were the only cases in the data file where there where special elections
-rslts <- filter(rslts, special=TRUE)
+rslts <- filter(rslts, special = TRUE)
 
 # From the data set, I've kept seven columns for my analysis and filtered out for years
-rslts <- subset(rslts, select = c(year, state_po, district, candidate, party, candidatevotes, totalvotes))
-rslts <- filter(rslts, year >= 2000)
+rslts <-
+  subset(
+    rslts,
+    select = c(
+      year,
+      state_po,
+      district,
+      candidate,
+      party,
+      candidatevotes,
+      totalvotes
+    )
+  )
+rslts <- filter(rslts, year >= 1990)
+rslts$percent <- round(100 * rslts$candidatevotes / rslts$totalvotes, 2)
+
+# NOTE: in Minnesota, the democratic party is called "democratic-farmer-labor," so I've changed it's name in the data.frame to "democrat."
+rslts$party[rslts$party == "democratic-farmer-labor"] <- "democrat"
+
+# In preparation for collecting the uncontested elections, I checked to see whether or not I should include the "libertarian" party.  They ran candidates in 2,018 elections between 1990 and 2018.  But never got higher than 31% of the vote and their mean vote percentage was 3.4% (with a distribution of results that was heavily skewed right with "skewness" = 3.4).  As such I have not included the "libertarian" party as a major party, and have confined my analysis to Democrats and Republicans.
+libs <- filter(rslts, party == "libertarian")
+num_libertarian_canditates <- nrow(libs)
+high_percent_libertarians <- max(libs$percent)
+mean_percent_libertarians <- mean(libs$percent)
+skew_percent_libertarians <- skewness(libs$percent)
 
 # Need to adjust for uncontested elections.  So first created a data.frame of the districts/years where there was not both a democrat and republican running
 
-for (yr in seq(2000, 2018, 2)) {
-  #filter out just that year and put it in a frame
+uncontested <- data.frame(
+  year = integer(),
+  state_po = character(),
+  district = integer(),
+  candidate = character(),
+  party = character(),
+  candidatevotes = integer(),
+  totalvotes = integer(),
+  percent = numeric()
+)
+
+num_uncontested <- data.frame(year = integer(), number = integer())
+
+#For each year, for each state, for each district: collect up the districts where there was not both a Democrat and a Republican
+for (yr in seq(1990, 2018, 2)) {
+  total <- 0
   for (st in state_abbrs$Code) {
-    #make a data.frame for that year and that state
+    low <-
+      min(rslts[rslts$year == yr & rslts$state_po == st,]$district)
+    high <-
+      max(rslts[rslts$year == yr & rslts$state_po == st,]$district)
     
-    for (dstrt in seq(min to max))
-    
-    
+    for (dst in seq(low, high)) {
+      Dems <- (rslts[rslts$year == yr & rslts$state_po == st &
+                       rslts$district == dst,]$party == "democrat")
+      Repubs <- (rslts[rslts$year == yr & rslts$state_po == st &
+                         rslts$district == dst,]$party == "republican")
+      
+      #In some states (e.g. CA, WA) there are two candidates of the same party and none from the other party on the ballot (should count as uncontested).  And in other states(e.g. LA) there are several candidates from each party (should count as contested)
+      
+      if (sum(Dems, na.rm=TRUE) == 0 | sum(Repubs, na.rm=TRUE) == 0) {
+        new <- rslts[rslts$year == yr & rslts$state_po == st &
+                       rslts$district == dst,]
+        total <- total + 1
+        uncontested <- rbind(uncontested, new)
+      }
+    }
   }
-  alone <- filter(rstls, year == yr &  )
-  for (dst in 1:max())
-    #filter out just that district and put it into a frame
-    #test for missing dem or repub...  filter(rslts, !(party=="democrat" & party=="republican") )
- 
+  new <- data.frame(year = yr, number = total)
+  num_uncontested <- rbind(num_uncontested, new)
 }
-  
 
+```
 
-rslts <- filter(rslts, party=="democrat" | party=="republican")
+```{r}
+    |
+                 
+                 rslts[rslts$year == yr & rslts$state_po == st &
+                         rslts$district == dst,]$party == "libertarian")
+```
 
-rslts$percent <- 100*rslts$candidatevotes/rslts$totalvotes
 
 https://www.census.gov/library/publications/2011/compendia/usa-counties-2011.html#POP
 # to get .xls for population and .xls for area
