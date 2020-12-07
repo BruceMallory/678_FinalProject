@@ -23,7 +23,7 @@ state_abbrs <- filter(state_abbrs, Code != "DC")
 # Historical note.  In the data file, there was a column "special."  There were two sets of elections where special="TRUE."  Both is Texas.  One in 1996, the other 2006.  In the first the US District Court found that the redrawn districts were unconstitutional and ordered a special election to redo the primary election - then held a general election in December.  And again in 2006, the US Supreme Court found that numerous redrawn districts were unconstitutional and again ordered a new district map and a special election for the primaries with a December general election.  Since these special elections were "redoing" the primary elections in those districts, I've removed them from the data set, thus keeping only the general elections in the data set.  These were the only cases in the data file where there where special elections
 rslts <- filter(rslts, special = TRUE)
 
-# From the data set, I've kept seven columns for my analysis and filtered out for years
+# From the data set, I've kept seven columns for my analysis and filtered out for years beyond 1990
 rslts <-
   subset(
     rslts,
@@ -50,8 +50,16 @@ high_percent_libertarians <- max(libs$percent)
 mean_percent_libertarians <- mean(libs$percent)
 skew_percent_libertarians <- skewness(libs$percent)
 
-# Need to adjust for uncontested elections.  So first created a data.frame of the districts/years where there was not both a democrat and republican running
+# Remove all candidates who are not either republican or democrat
 
+rslts <- filter(rslts, rslts$party == "democrat" | rslts$party == "republican")
+```
+
+
+# Impute vote values for uncontested elections.
+```{r}
+
+#(A) Created a data.frame of the districts/years where there was not both a democrat and republican running (uncontested elections)
 uncontested <- data.frame(
   year = integer(),
   state_po = character(),
@@ -62,7 +70,6 @@ uncontested <- data.frame(
   totalvotes = integer(),
   percent = numeric()
 )
-
 
 YearlySummary <-
   data.frame(year = integer(),
@@ -107,13 +114,44 @@ for (yr in seq(1990, 2018, 2)) {
   YearlySummary <- rbind(YearlySummary, new)
 }
 
-```
+#(B) Created a data.frame of district by district vote tallies (min and max for each party) for each year
+YearlyVoteTotals <-
+  data.frame(
+    year = integer(),
+    state = character(),
+    party = character(),
+    max = integer(),
+    min = integer(),
+    adjusted_sum = integer(),
+    adjusted_percent = numeric()
+  )
 
-```{r}
-    |
-                 
-                 rslts[rslts$year == yr & rslts$state_po == st &
-                         rslts$district == dst,]$party == "libertarian")
+for (yr in seq(1990, 2018, 2)) {
+  
+  for (st in state_abbrs$Code) {
+    low <-
+      min(rslts[rslts$year == yr & rslts$state_po == st, ]$district)
+    high <-
+      max(rslts[rslts$year == yr & rslts$state_po == st, ]$district)
+    demvotes <- c()
+    repubvotes <- c()
+    
+    for (dst in seq(low, high)) {
+      demvotes <-
+        append(demvotes, rslts[rslts$year == 1990 &
+                           rslts$state_po == "AL" &
+                           rslts$district == dst & rslts$party == "democrat", ]$candidatevotes)
+      repubvotes <-
+        append(repubvotes, rslts[rslts$year == 1990 &
+                           rslts$state_po == "AL" &
+                           rslts$district == dst & rslts$party == "republican", ]$candidatevotes)
+    }
+    newDem <- data.frame(year = yr, state=st, party = "democrat", max = max(demvotes),
+                         min = min(demvotes), adjusted_sum = NULL, adjusted_percent = NULL)
+      YearlyVoteTotals <- rbind(YearlySummary, new)
+  }
+}
+
 ```
 
 
