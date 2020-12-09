@@ -19,7 +19,7 @@ rslts <- read.table("ELBYL3", header = TRUE)
 # Historical note.  In the data file, there was a column "special."  There were two sets of elections where special="TRUE."  Both is Texas.  One in 1996, the other 2006.  In the first the US District Court found that the redrawn districts were unconstitutional and ordered a special election to redo the primary election - then held a general election in December.  And again in 2006, the US Supreme Court found that numerous redrawn districts were unconstitutional and again ordered a new district map and a special election for the primaries with a December general election.  Since these special elections were "redoing" the primary elections in those districts, I've removed them from the data set, thus keeping only the general elections in the data set.  These were the only cases in the data file where there where special elections.  And because of this story of split aliegance of who was doing the redistricting, I've put TX in the "independent" group for 2000 redistricting.
 rslts <- filter(rslts, special = TRUE)
 
-# From the data set, I've kept seven columns for my analysis and filtered out for years 1992 and beyond
+# From the data set, I've kept seven columns for my analysis and filtered out for years 2002 and beyond
 rslts <-
   subset(
     rslts,
@@ -34,7 +34,7 @@ rslts <-
     )
   )
 rslts <- rslts %>%  rename(state = state_po)
-rslts <- filter(rslts, year >= 1992)
+rslts <- filter(rslts, year >= 2002)
 rslts$percent <- round(100 * rslts$candidatevotes / rslts$totalvotes, 2)
 
 # NOTE: in Minnesota, the democratic party is called "democratic-farmer-labor," so I've changed it's name in the data.frame to "democrat."  And same for the republican party "independent-republican"
@@ -103,7 +103,7 @@ YearlySummary <-
 
 #(A) For each year, for each state, for each district: collect up the districts where there was NOT both a Democrat and a Republican (uncontested), and the districts where there WAS both Dem & Repub (contested)
 
-for (yr in seq(1992, 2018, 2)) {
+for (yr in seq(2002, 2018, 2)) {
   #count1 will count the number of uncontested races
   #count2 will count the number of competitive races
   count1 <- 0
@@ -171,7 +171,7 @@ YearlyNoContesteds <-
 
 #(B) Going year by year, state by state, find max and min votes for each party and store in a data.frame (which will be used to impute missing values)
 
-for (yr in seq(1992, 2018, 2)) {
+for (yr in seq(2002, 2018, 2)) {
   for (st in state_abbrs$Code) {
     low <-
       min(rslts[rslts$year == yr & rslts$state == st,]$district)
@@ -308,9 +308,76 @@ for (i in (1:nrow(uncontested))) {
 }
 
 ```
-## (D) put it all together in to Results
-```{r}
+## (D) put it all together into Results and DemYearlyResults
+```{r warning=FALSE}
 Results <- rbind(contested, uncontested, imputed)
+Results$winner <- c("?")
+
+#by year by state get the winner for each district
+for (yr in seq(2002, 2018, 2)) {
+  for (st in state_abbrs$Code) {
+    #breaking out prior to dst loop for the two years/states when there were no contested elections
+    if ((st=="LA" & yr==1994) | (st=="AR" & yr==2008)){
+      break
+    }
+    Districts <- unique(Results[Results$year == yr &
+                                             Results$state == st, ]$district)
+    for (dst in (min(Districts):max(Districts))) {
+      if (Results[Results$year == yr &
+                  Results$state == st &
+                  Results$district == dst &
+                  Results$party == "democrat",]$candidatevotes > Results[Results$year == yr &
+                                                                       Results$state == st &
+                                                                       Results$district == dst &
+                                                                       Results$party == "republican",]$candidatevotes) {
+        Results[Results$year == yr &
+                  Results$state == st &
+                  Results$district == dst &
+                  Results$party == "democrat",]$winner <- "won"
+        Results[Results$year == yr &
+                  Results$state == st &
+                  Results$district == dst &
+                  Results$party == "republican",]$winner <- "lost"
+      } else {
+        Results[Results$year == yr &
+                  Results$state == st &
+                  Results$district == dst &
+                  Results$party == "republican",]$winner <- "won"
+        Results[Results$year == yr &
+                  Results$state == st &
+                  Results$district == dst &
+                  Results$party == "democrat",]$winner <- "lost"
+      }
+    }
+  }
+}
+
+#calculate the total votes and total seats 
+YearlyResults <- Results %>%
+  group_by(year, state, party) %>% 
+  summarise(votes = sum(candidatevotes))
+
+YearlyResults$totalvotes <- seq(1, nrow(YearlyResults))
+YearlyResults$totalseats <- seq(1, nrow(YearlyResults))
+
+for (yr in seq(2002, 2018, 2)) {
+  for (st in state_abbrs$Code) {
+    YearlyResults[YearlyResults$year == yr &
+                    YearlyResults$state == st,]$totalvotes <-
+      YearlyResults[YearlyResults$year == yr &
+                      YearlyResults$state == st & YearlyResults$party == "democrat", ]$votes +
+      YearlyResults[YearlyResults$year == yr &
+                      YearlyResults$state == st & YearlyResults$party == "republican", ]$votes
+  }
+}
+
+#calculate the percentage of votes and of seats, by party for each year & state
+YearlyResults$vote_percent <- round(100 * YearlyResults$votes / YearlyResults$totalvotes, 2)
+
+#calculate the number of seats for each year & state, and the percentage of seats
+
+
+
 ```
 
 
