@@ -10,24 +10,22 @@ knitr::opts_chunk$set(echo = TRUE)
 pacman::p_load("HelpersMG", "readr", "ggplot2", "lmer4", "rstanarm", "dplyr", "stringr", "e1071")
 ```
 
-## (1) Load election data
-```{r echo=FALSE, warning=FALSE, message=FALSE}
+# (1) Load and clean election data
+## build rslts
 #wget("https://dataverse.harvard.edu/api/access/datafile/:persistentId?persistentId=doi:10.7910/DVN/IG0UN2/ELBYL3")
+```{r echo=FALSE, warning=FALSE, message=FALSE}
 rslts <- read.table("ELBYL3", header = TRUE)
-
-state_abbrs <- read.csv("states.csv")
-state_abbrs <- filter(state_abbrs, Code != "DC")
 
 # Historical note.  In the data file, there was a column "special."  There were two sets of elections where special="TRUE."  Both is Texas.  One in 1996, the other 2006.  In the first the US District Court found that the redrawn districts were unconstitutional and ordered a special election to redo the primary election - then held a general election in December.  And again in 2006, the US Supreme Court found that numerous redrawn districts were unconstitutional and again ordered a new district map and a special election for the primaries with a December general election.  Since these special elections were "redoing" the primary elections in those districts, I've removed them from the data set, thus keeping only the general elections in the data set.  These were the only cases in the data file where there where special elections
 rslts <- filter(rslts, special = TRUE)
 
-# From the data set, I've kept seven columns for my analysis and filtered out for years  1992 and beyond
+# From the data set, I've kept seven columns for my analysis and filtered out for years 1992 and beyond
 rslts <-
   subset(
     rslts,
     select = c(
       year,
-      state,
+      state_po,
       district,
       candidate,
       party,
@@ -35,11 +33,13 @@ rslts <-
       totalvotes
     )
   )
-rslts <- filter(rslts, year >= 1990)
+rslts <- rslts %>%  rename(state = state_po)
+rslts <- filter(rslts, year >= 1992)
 rslts$percent <- round(100 * rslts$candidatevotes / rslts$totalvotes, 2)
 
-# NOTE: in Minnesota, the democratic party is called "democratic-farmer-labor," so I've changed it's name in the data.frame to "democrat."
+# NOTE: in Minnesota, the democratic party is called "democratic-farmer-labor," so I've changed it's name in the data.frame to "democrat."  And same for the republican party "independent-republican"
 rslts$party[rslts$party == "democratic-farmer-labor"] <- "democrat"
+rslts$party[rslts$party == "independent-republican"] <- "republican"
 
 # In preparation for collecting the uncontested elections, I checked to see whether or not I should include the "libertarian" party.  They ran candidates in 2,018 elections between 1990 and 2018.  But never got higher than 31% of the vote and their mean vote percentage was 3.4% (with a distribution of results that was heavily skewed right with "skewness" = 3.4).  As such I have not included the "libertarian" party as a major party, and have confined my analysis to Democrats and Republicans.
 libs <- filter(rslts, party == "libertarian")
@@ -48,12 +48,18 @@ high_percent_libertarians <- max(libs$percent)
 mean_percent_libertarians <- mean(libs$percent)
 skew_percent_libertarians <- skewness(libs$percent)
 
-# Remove all candidates who are not either republican or democrat
-rslts <- filter(rslts, rslts$party == "democrat" | rslts$party == "republican")
+# Remove all states that only have one representative to congress - in these states there is never a need for redistricting (WY, VT, SD, ND, MT, DE, AK)
+rslts <- filter(rslts, !state %in% c("WY", "VT", "SD", "ND", "MT", "DE", "AK"))
+
+# Include candidates who are either republican or democrat
+rslts <- filter(rslts, party == "democrat" | party == "republican")
+
+state_abbrs <- read.csv("states.csv")
+state_abbrs <- filter(state_abbrs, !Code %in% c("WY", "VT", "SD", "ND", "MT", "DE", "AK","DC"))
 ```
 
-
-# Impute vote values for uncontested elections.
+## (2) Impute vote values for uncontested elections.
+## (A) build uncontested and contested
 ```{r}
 
 #Initialize data.frames to collect data
@@ -85,6 +91,7 @@ YearlySummary <-
              competitive = integer())
 
 #(A) For each year, for each state, for each district: collect up the districts where there was NOT both a Democrat and a Republican (uncontested), and the districts where there WAS both Dem & Repub (contested)
+
 for (yr in seq(1992, 2018, 2)) {
   #count1 will count the number of uncontested races
   #count2 will count the number of competitive races
@@ -127,8 +134,11 @@ for (yr in seq(1992, 2018, 2)) {
                competitive = count2)
   YearlySummary <- rbind(YearlySummary, new)
 }
+```
+## (B) Build YearlyVoteTotals and YearlyNoContesteds
+```{r}
 
-#(B) Going year by year, state by state, find max and min votes for each party and store in a data.frame (which will be used to impute missing values)
+#Initialize data.frames to collect data
 YearlyVoteTotals <-
   data.frame(
     year = integer(),
@@ -136,6 +146,7 @@ YearlyVoteTotals <-
     party = character(),
     max = integer(),
     min = integer(),
+    mean = integer(),
     adjusted_sum = integer(),
     adjusted_percent = numeric()
   )
@@ -143,8 +154,11 @@ YearlyVoteTotals <-
 YearlyNoContesteds <-
   data.frame(
     year = integer(),
-    state = character()
+    state = character(),
+    num_districts = integer()
   )
+
+#(B) Going year by year, state by state, find max and min votes for each party and store in a data.frame (which will be used to impute missing values)
 
 for (yr in seq(1992, 2018, 2)) {
   for (st in state_abbrs$Code) {
@@ -171,9 +185,14 @@ for (yr in seq(1992, 2018, 2)) {
                                        contested$party == "republican", ]$candidatevotes)
     }
     if (length(ContestedDistricts)==0) {
+      Districts <- unique(rslts[rslts$year == yr &
+                                             rslts$state == st, ]$district)
+      TotalDistricts <- max(Districts)-min(Districts)+1
       new <-
         data.frame(year = yr,
-                   state = st)
+                   state = st,
+                   num_districts = TotalDistricts
+                   )
       YearlyNoContesteds <- rbind(YearlyNoContesteds, new)
       
     } else {
@@ -201,9 +220,18 @@ for (yr in seq(1992, 2018, 2)) {
     }
   }
 }
+```
+## (C) build imputed
+```{r}
 
-#(C) Create a data.frame of imputed "candidates" with their vote "totals" (minimum # of votes that party got in a district for that election cycle)  And while doing this, replace rslts$candidatevotes with the imputed vote "total" for the uncontested candidate (maximum # of votes that party got in a district for that election cycle).
+#NOTE: As the YearlyNoContesteds data.frame shows, there were two times where the whole states delegation was uncontested (1994 in "LA" and 2008 in "AR").  Since there is no data to impute from for each of these instances, I've removed them from both the "rslts" data.frame and the "uncontested" data.frame.
+rslts <- filter(rslts, !(rslts$year == 1994 & rslts$state == "LA"))
+rslts <- filter(rslts, !(rslts$year == 2008 & rslts$state == "AR"))
+uncontested <- filter(uncontested, !(uncontested$year == 1994 & uncontested$state == "LA"))
+uncontested <- filter(uncontested, !(uncontested$year == 2008 & uncontested$state == "AR"))
 
+state_abbrs <- filter(state_abbrs, !Code %in% c("WY", "VT", "SD", "ND", "MT", "DE", "AK","DC"))
+#Initialize data.frames to collect data
 imputed <- data.frame(
   year = integer(),
   state = character(),
@@ -214,6 +242,64 @@ imputed <- data.frame(
   totalvotes = integer(),
   percent = numeric()
 )
+
+#(C) Create a data.frame of imputed "candidates" with their vote "totals" (minimum # of votes that party got in a district in that state for that election cycle)  And while doing this, replace rslts$candidatevotes with the imputed vote "total" for the uncontested candidate (maximum # of votes that party got in a district for that election cycle).
+
+for (i in (1:nrow(uncontested))) {
+  yr <- uncontested$year[i]
+  st <- uncontested$state[i]
+  dst <- uncontested$district[i]
+  if (uncontested$party[i] == "democrat") {
+    new_party <- "republican"
+    new_votes_loser <-
+      (YearlyVoteTotals[YearlyVoteTotals$year == yr &
+                          YearlyVoteTotals$state == st &
+                          YearlyVoteTotals$party == "republican",]$min)
+    new_votes_winner <-
+      (YearlyVoteTotals[YearlyVoteTotals$year == yr &
+                          YearlyVoteTotals$state == st &
+                          YearlyVoteTotals$party == "republican",]$max)
+  } else {
+    new_party <-  "democrat"
+    new_votes_loser <-
+      (YearlyVoteTotals[YearlyVoteTotals$year == yr &
+                          YearlyVoteTotals$state == st &
+                          YearlyVoteTotals$party == "democrat",]$min)
+    new_votes_winner <-
+      (YearlyVoteTotals[YearlyVoteTotals$year == yr &
+                          YearlyVoteTotals$state == st &
+                          YearlyVoteTotals$party == "democrat",]$max)
+  }
+  new_votes_total <- new_votes_loser + new_votes_winner
+  
+  new <- data.frame(
+    year = uncontested$year[i],
+    state = uncontested$state[i],
+    district = uncontested$district[i],
+    candidate = "imputed",
+    party = new_party,
+    candidatevotes = new_votes_loser,
+    totalvotes = new_votes_total,
+    percent = round(100 * new_votes_loser / new_votes_total, 2)
+  )
+  
+  imputed <- rbind(imputed, new)
+  
+  #replace the votes and vote total for the uncontested candidate
+  rw <-
+    which(uncontested$year == yr &
+            uncontested$state == st & uncontested$district == dst)
+  uncontested$candidatevotes[rw] <- new_votes_winner
+  uncontested$totalvotes[rw] <- new_votes_total
+  uncontested$percent[rw] <-
+    round(100 * new_votes_winner / new_votes_total, 2)
+  
+}
+
+```
+## (D) put it all together in to Results
+```{r}
+Results <- rbind(contested, uncontested, imputed)
 ```
 
 
