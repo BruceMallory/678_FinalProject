@@ -57,6 +57,17 @@ rslts <- filter(rslts, party == "democrat" | party == "republican")
 state_abbrs <- read.csv("states.csv")
 state_abbrs <- filter(state_abbrs, !Code %in% c("WY", "VT", "SD", "ND", "MT", "DE", "AK","DC"))
 ```
+## build grouping variable
+```{r}
+one_district <- c("WY", "VT", "SD", "ND", "MT", "DE", "AK")
+repub_2010 <- c("AL", "FL", "GA", "IN", "LA", "MI", "NE", "NH", "NC", "OH", "OK", "PA", "SC", "TN", "UT", "VA", "WI")
+dem_2010 <- c("AR", "IL", "MD", "MA", "RI", "WV")
+ind_2010 <- c("AZ", "CA", "ID", "IA", "WA", "CO", "CT", "KS", "MN", "MS", "NV", "NM", "NY", "HI", "NJ", "KY", "ME", "MO", "OR", "TX")
+repub_2000 <- c("FL", "IL", "KS", "MI", "NE", "OH", "PA", "UT", "VA")
+dem_2000 <- c("AL", "CA", "GA", "IN", "MA", "MD", "NC", "WV")
+ind_2000 <- c("AR", "AZ", "CO", "CT", "HI", "IA", "ID", "KY", "LA", "ME", "MN", "MO", "MS", "NH", "NJ", "NM", "NV", "NY", "OK", "OR", "RI", "SC", "TN", "TX", "WA", "WI")
+
+```
 
 ## (2) Impute vote values for uncontested elections.
 ## (A) build uncontested and contested
