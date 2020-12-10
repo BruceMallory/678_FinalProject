@@ -7,7 +7,7 @@ output: pdf_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load("HelpersMG", "readr", "ggplot2", "lmer4", "rstanarm", "dplyr", "stringr", "e1071")
+pacman::p_load("HelpersMG", "readr", "ggplot2", "lmer4", "rstanarm", "dplyr", "stringr", "e1071", "ggrepel")
 ```
 
 # (1) Load and clean election data
@@ -57,7 +57,7 @@ rslts <- filter(rslts, party == "democrat" | party == "republican")
 state_abbrs <- read.csv("states.csv")
 state_abbrs <- filter(state_abbrs, !Code %in% c("WY", "VT", "SD", "ND", "MT", "DE", "AK","DC"))
 ```
-## build grouping variable
+## To build grouping variable
 ```{r}
 one_district <- c("WY", "VT", "SD", "ND", "MT", "DE", "AK")
 repub_2010 <- c("AL", "FL", "GA", "IN", "LA", "MI", "NE", "NH", "NC", "OH", "OK", "PA", "SC", "TN", "UT", "VA", "WI")
@@ -67,6 +67,36 @@ repub_2000 <- c("FL", "IL", "KS", "MI", "NE", "OH", "PA", "UT", "VA")
 dem_2000 <- c("AL", "CA", "GA", "IN", "MA", "MD", "NC", "WV")
 ind_2000 <- c("AR", "AZ", "CO", "CT", "HI", "IA", "ID", "KY", "LA", "ME", "MN", "MO", "MS", "NH", "NJ", "NM", "NV", "NY", "OK", "OR", "RI", "SC", "TN", "TX", "WA", "WI")
 
+who <- data.frame(year = integer(),
+                         state = character(),
+                         who = character())
+for (i in seq(2002, 2010, 2)) {
+  a <- data.frame(year = i,
+                  state = repub_2000,
+                  who = c("R"))
+  b <- data.frame(year = i,
+                  state = dem_2000,
+                  who = c("D"))
+  c <- data.frame(year = i,
+                  state = ind_2000,
+                  who = c("I"))
+  who <- rbind(who, a, b, c)
+}
+who <- filter(who, !(state=="AZ" & year == 2008))
+
+for (i in seq(2012, 2018, 2)) {
+  a <- data.frame(year = i,
+                  state = repub_2010,
+                  who = c("R"))
+  b <- data.frame(year = i,
+                  state = dem_2010,
+                  who = c("D"))
+  c <- data.frame(year = i,
+                  state = ind_2010,
+                  who = c("I"))
+  who <- rbind(who, a, b, c)
+}
+who$who <- as.factor(who$who)
 ```
 
 ## (2) Impute vote values for uncontested elections.
@@ -308,7 +338,7 @@ for (i in (1:nrow(uncontested))) {
 }
 
 ```
-## (D) put it all together into Results and DemYearlyResults
+## (D) put it all together into Results and DemYearlyResults & RepubYearlyResults
 ```{r warning=FALSE}
 Results <- rbind(contested, uncontested, imputed)
 Results$winner <- c("?")
@@ -316,67 +346,145 @@ Results$winner <- c("?")
 #by year by state get the winner for each district
 for (yr in seq(2002, 2018, 2)) {
   for (st in state_abbrs$Code) {
-    #breaking out prior to dst loop for the two years/states when there were no contested elections
-    if ((st=="LA" & yr==1994) | (st=="AR" & yr==2008)){
-      break
-    }
-    Districts <- unique(Results[Results$year == yr &
-                                             Results$state == st, ]$district)
-    for (dst in (min(Districts):max(Districts))) {
-      if (Results[Results$year == yr &
-                  Results$state == st &
-                  Results$district == dst &
-                  Results$party == "democrat",]$candidatevotes > Results[Results$year == yr &
-                                                                       Results$state == st &
-                                                                       Results$district == dst &
-                                                                       Results$party == "republican",]$candidatevotes) {
-        Results[Results$year == yr &
-                  Results$state == st &
-                  Results$district == dst &
-                  Results$party == "democrat",]$winner <- "won"
-        Results[Results$year == yr &
-                  Results$state == st &
-                  Results$district == dst &
-                  Results$party == "republican",]$winner <- "lost"
-      } else {
-        Results[Results$year == yr &
-                  Results$state == st &
-                  Results$district == dst &
-                  Results$party == "republican",]$winner <- "won"
-        Results[Results$year == yr &
-                  Results$state == st &
-                  Results$district == dst &
-                  Results$party == "democrat",]$winner <- "lost"
+    if ((st == "LA" & yr == 1994) | (st == "AR" & yr == 2008)) {
+      #skip the dst loop for the two years/states when there were no contested elections
+    } else {
+      Districts <- unique(Results[Results$year == yr &
+                                    Results$state == st, ]$district)
+      for (dst in (min(Districts):max(Districts))) {
+        if (Results[Results$year == yr &
+                    Results$state == st &
+                    Results$district == dst &
+                    Results$party == "democrat",]$candidatevotes >
+            Results[Results$year == yr &
+                    Results$state == st &
+                    Results$district == dst &
+                    Results$party == "republican",]$candidatevotes) {
+          Results[Results$year == yr &
+                    Results$state == st &
+                    Results$district == dst &
+                    Results$party == "democrat",]$winner <- "won"
+          Results[Results$year == yr &
+                    Results$state == st &
+                    Results$district == dst &
+                    Results$party == "republican",]$winner <-
+            "lost"
+        } else {
+          Results[Results$year == yr &
+                    Results$state == st &
+                    Results$district == dst &
+                    Results$party == "republican",]$winner <- "won"
+          Results[Results$year == yr &
+                    Results$state == st &
+                    Results$district == dst &
+                    Results$party == "democrat",]$winner <- "lost"
+        }
       }
     }
   }
 }
 
-#calculate the total votes and total seats 
+#calculate the total votes and total seats
 YearlyResults <- Results %>%
-  group_by(year, state, party) %>% 
+  group_by(year, state, party) %>%
   summarise(votes = sum(candidatevotes))
 
-YearlyResults$totalvotes <- seq(1, nrow(YearlyResults))
-YearlyResults$totalseats <- seq(1, nrow(YearlyResults))
+YearlyResults$vote_percentage <- seq(0, 1, nrow(YearlyResults))
+YearlyResults$seats <- seq(0, 1, nrow(YearlyResults))
+YearlyResults$seat_percentage <- seq(0, 1, nrow(YearlyResults))
 
 for (yr in seq(2002, 2018, 2)) {
   for (st in state_abbrs$Code) {
+    demvotes <- YearlyResults[YearlyResults$year == yr &
+                                YearlyResults$state == st &
+                                YearlyResults$party == "democrat", ]$votes
+    
+    repubvotes <- YearlyResults[YearlyResults$year == yr &
+                                  YearlyResults$state == st &
+                                  YearlyResults$party == "republican", ]$votes
+    
+    totalvotes <- demvotes + repubvotes
+    
     YearlyResults[YearlyResults$year == yr &
-                    YearlyResults$state == st,]$totalvotes <-
-      YearlyResults[YearlyResults$year == yr &
-                      YearlyResults$state == st & YearlyResults$party == "democrat", ]$votes +
-      YearlyResults[YearlyResults$year == yr &
-                      YearlyResults$state == st & YearlyResults$party == "republican", ]$votes
+                    YearlyResults$state == st &
+                    YearlyResults$party == "democrat",]$vote_percentage <-
+      round(100 * demvotes / totalvotes, 2)
+    YearlyResults[YearlyResults$year == yr &
+                    YearlyResults$state == st &
+                    YearlyResults$party == "republican",]$vote_percentage <-
+      round(100 * repubvotes / totalvotes, 2)
+    
+    demseats <-
+      nrow(Results[Results$year == yr &
+                     Results$state == st &
+                     Results$party == "democrat" &
+                     Results$winner == "won",])
+    repubseats <-
+      nrow(Results[Results$year == yr &
+                     Results$state == st &
+                     Results$party == "republican" &
+                     Results$winner == "won",])
+    totalseats <- demseats + repubseats
+    
+    YearlyResults[YearlyResults$year == yr &
+                    YearlyResults$state == st &
+                    YearlyResults$party == "democrat",]$seat_percentage <-
+      round(100 * demseats / totalseats, 2)
+    YearlyResults[YearlyResults$year == yr &
+                    YearlyResults$state == st &
+                    YearlyResults$party == "republican",]$seat_percentage <-
+      round(100 * repubseats / totalseats, 2)
+    YearlyResults[YearlyResults$year == yr &
+                    YearlyResults$state == st,]$seats <-
+      totalseats
   }
 }
 
-#calculate the percentage of votes and of seats, by party for each year & state
-YearlyResults$vote_percent <- round(100 * YearlyResults$votes / YearlyResults$totalvotes, 2)
+DemYearlyResults <- filter(YearlyResults, party=="democrat")
+DemYearlyResults <- DemYearlyResults %>% inner_join(who, by = c("year", "state"))
+RepubYearlyResults <- filter(YearlyResults, party=="republican")
+RepubYearlyResults <- RepubYearlyResults %>% inner_join(who, by = c("year", "state"))
+```
+#EDA
+```{r}
 
-#calculate the number of seats for each year & state, and the percentage of seats
 
+ggplot(DemYearlyResults[DemYearlyResults$who==c("D", "R"), ]) +
+  aes(x = vote_percentage, y = seat_percentage, color = who) +
+  scale_color_manual(values = c("blue", "red")) +
+  geom_point(aes(size = seats, color=who),
+             alpha = 0.5) +
+  labs(x = "% of votes that were Democratic", y = "% of seats that are Democratic", title = "Proportional Representation?", subtitle = "Democratic vs. Rebulican controlled redistricting on Democratic results", col = "who redistricted", size = "number of seats") +
+  geom_abline(slope = 1,
+              intercept = 0,
+              color = "grey") +
+  xlim(20, 80) +
+  theme_bw()
 
+ggplot(RepubYearlyResults[RepubYearlyResults$who==c("D", "R"), ]) +
+  aes(x = vote_percentage, y = seat_percentage, color = who) +
+  scale_color_manual(values = c("blue", "red")) +
+  geom_point(aes(size = seats, color=who),
+             alpha = 0.5) +
+  labs(x = "% of votes that were Republican", y = "% of seats that are Republican", title = "Proportional Representation?", subtitle = "Democratic vs. Rebulican controlled redistricting on Republican results", col = "who redistricted", size = "number of seats") +
+  geom_abline(slope = 1,
+              intercept = 0,
+              color = "grey") +
+  xlim(20, 80) +
+  theme_bw()
+
+ggplot(DemYearlyResults) +
+  aes(x = vote_percentage, y = seat_percentage, color = who) +
+  scale_color_manual(values = c("blue", "green", "red")) +
+  geom_point(aes(size = seats, color=who),
+             alpha = 0.5) +
+  labs(x = "% of votes that were Democratic", y = "% of seats that are Democratic", title = "Proportional Representation?", subtitle = "Democratic vs. Rebulican vs. Independent controlled redistricting on Democratic results", col = "who redistricted", size = "number of seats") +
+  geom_abline(slope = 1,
+              intercept = 0,
+              color = "grey") +
+  geom_smooth(method=lm, se=FALSE) +
+  xlim(0, 80) +
+  theme_bw()
 
 ```
 
@@ -390,7 +498,7 @@ https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&ved=2ahUKEwjHkPmp
 
 ```
 
-## (2) An example data.frame to think through my analysis
+## (2) An example data.frame to think through my model fitting
 ```{r}
 States <- read_csv("States.csv")
 
@@ -415,14 +523,14 @@ ggplot(data=edf) +
 ```
 ## fitting
 ```{r}
-fit <- lmer(seats ~ votes + (1+votes|group), data=edf)
-#unable to evaluate scaled gradientModel failed to converge: degenerate  Hessian with 1 negative eigenvalues
+fit <- lmer(seat_percentage ~ vote_percentage + (1+vote_percentage|who), data=DemYearlyResults)
+#with edf: unable to evaluate scaled gradientModel failed to converge: degenerate  Hessian with 1 negative eigenvalues
 
-fit <- lmer(seats ~ (1|group), data=edf)
+fit <- lmer(seat_percentage ~ (1|who), data=DemYearlyResults)
 coef(fit)
 confint(fit)
 
-fit <- stan_lmer(seats ~ clumping + votes + (1+votes|group), control = list(adapt_delta = 0.99), data = edf)
+fit <- stan_lmer(seat_percentage ~ vote_percentage + (1+vote_percentage|who), control = list(adapt_delta = 0.99), data = DemYearlyResults)
 summary(fit)
 coef(fit)
 posterior_interval(fit)
