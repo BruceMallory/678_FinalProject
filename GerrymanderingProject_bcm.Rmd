@@ -1,5 +1,5 @@
 ---
-title: "Workflow"
+title: "Gerrymandering by whom"
 author: "Bruce Mallory"
 date: "12/2/2020"
 output: pdf_document
@@ -9,10 +9,14 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 pacman::p_load("HelpersMG", "readr", "ggplot2", "lmer4", "rstanarm", "dplyr", "stringr", "e1071", "ggrepel")
 ```
+# ABSTRACT
 
-# (1) Load and clean election data
-## build rslts
-#wget("https://dataverse.harvard.edu/api/access/datafile/:persistentId?persistentId=doi:10.7910/DVN/IG0UN2/ELBYL3")
+# INTRODUCTION
+
+# METHODS
+## (1) Load and clean election data
+### build rslts
+wget("https://dataverse.harvard.edu/api/access/datafile/:persistentId?persistentId=doi:10.7910/DVN/IG0UN2/ELBYL3")
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
 rslts <- read.table("ELBYL3", header = TRUE)
 
@@ -57,8 +61,8 @@ rslts <- filter(rslts, party == "democrat" | party == "republican")
 state_abbrs <- read.csv("states.csv")
 state_abbrs <- filter(state_abbrs, !Code %in% c("WY", "VT", "SD", "ND", "MT", "DE", "AK","DC"))
 ```
-## To build grouping variable
-```{r}
+### build grouping variable
+```{r echo=FALSE}
 one_district <- c("WY", "VT", "SD", "ND", "MT", "DE", "AK")
 repub_2010 <- c("AL", "FL", "GA", "IN", "LA", "MI", "NE", "NH", "NC", "OH", "OK", "PA", "SC", "TN", "UT", "VA", "WI")
 dem_2010 <- c("AR", "IL", "MD", "MA", "RI", "WV")
@@ -98,10 +102,9 @@ for (i in seq(2012, 2018, 2)) {
 }
 who$who <- as.factor(who$who)
 ```
-
 ## (2) Impute vote values for uncontested elections.
-## (A) build uncontested and contested
-```{r}
+### (A) build uncontested and contested
+```{r echo=FALSE}
 
 #Initialize data.frames to collect data
 uncontested <- data.frame(
@@ -176,8 +179,8 @@ for (yr in seq(2002, 2018, 2)) {
   YearlySummary <- rbind(YearlySummary, new)
 }
 ```
-## (B) Build YearlyVoteTotals and YearlyNoContesteds
-```{r}
+### (B) build YearlyVoteTotals and YearlyNoContesteds
+```{r echo=FALSE}
 
 #Initialize data.frames to collect data
 YearlyVoteTotals <-
@@ -262,8 +265,8 @@ for (yr in seq(2002, 2018, 2)) {
   }
 }
 ```
-## (C) build imputed
-```{r}
+### (C) build imputed
+```{r echo=FALSE}
 
 #NOTE: As the YearlyNoContesteds data.frame shows, there were two times where the whole states delegation was uncontested (1994 in "LA" and 2008 in "AR").  Since there is no data to impute from for each of these instances, I've removed them from both the "rslts" data.frame and the "uncontested" data.frame.
 rslts <- filter(rslts, !(rslts$year == 1994 & rslts$state == "LA"))
@@ -338,8 +341,8 @@ for (i in (1:nrow(uncontested))) {
 }
 
 ```
-## (D) put it all together into Results and DemYearlyResults & RepubYearlyResults
-```{r warning=FALSE}
+### (D) put it all together into Results and DemYearlyResults & RepubYearlyResults
+```{r warning=FALSE, echo=FALSE}
 Results <- rbind(contested, uncontested, imputed)
 Results$winner <- c("?")
 
@@ -388,6 +391,7 @@ for (yr in seq(2002, 2018, 2)) {
 YearlyResults <- Results %>%
   group_by(year, state, party) %>%
   summarise(votes = sum(candidatevotes))
+YearlyResults <- ungroup(YearlyResults)
 
 YearlyResults$vote_percentage <- seq(0, 1, nrow(YearlyResults))
 YearlyResults$seats <- seq(0, 1, nrow(YearlyResults))
@@ -445,7 +449,21 @@ DemYearlyResults <- DemYearlyResults %>% inner_join(who, by = c("year", "state")
 RepubYearlyResults <- filter(YearlyResults, party=="republican")
 RepubYearlyResults <- RepubYearlyResults %>% inner_join(who, by = c("year", "state"))
 ```
-#EDA
+### (E) build density data.frame
+```{r echo=FALSE}
+#pop_2000 is in Census.gov/POP01.xls:POP010200D
+#pop_2000 is in Census.gov/POP01.xls:POP010210D
+#area_2000 is in Census.gov/LND01.xls:LND110200D
+#area_2010 is in Census.gov/LND01.xls:LND110200D
+
+#https://www2.census.gov/programs-surveys/popest/datasets/2000-2009/counties/totals/
+
+
+#population estimates are in Census.gov/co-est2009-alldata.csv:POPESTIMATE2002
+```
+
+## (3) EDA 
+### vote_percentage vs seat_percentage
 ```{r}
 
 
@@ -487,18 +505,10 @@ ggplot(DemYearlyResults) +
   theme_bw()
 
 ```
+### density vs seat_percentage:vote_percentage
 
-
-https://www.census.gov/library/publications/2011/compendia/usa-counties-2011.html#POP
-# to get .xls for population and .xls for area
-https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&ved=2ahUKEwjHkPmp4bftAhV5FlkFHbDHBvwQFjAAegQIAxAC&url=https%3A%2F%2Fwww2.census.gov%2Flibrary%2Fpublications%2F2011%2Fcompendia%2Fusa-counties%2Fexcel%2FMastdata.xls&usg=AOvVaw1ahgb3GWupqOb1UHYbZlMw
-# to get the code explanations for the above
-
-
-
-```
-
-## (2) An example data.frame to think through my model fitting
+## (4) Model fitting
+### An example data.frame to think through my model fitting
 ```{r}
 States <- read_csv("States.csv")
 
@@ -520,8 +530,22 @@ ggplot(data=edf) +
   geom_point(aes(x=votes, y=seats, color=group)) +
   geom_smooth(method=lm, aes(x=votes, y=seats, color=group), se=FALSE)
 
+
+fit <- lmer(seats ~ votes + (1+votes|group), data=edf)
+ #unable to evaluate scaled gradientModel failed to converge: degenerate  Hessian with 1 negative eigenvalues
+
+ fit <- lmer(seats ~ (1|group), data=edf)
+ coef(fit)
+ confint(fit)
+
+ fit <- stan_lmer(seats ~ clumping + votes + (1+votes|group), control = list(adapt_delta = 0.99), data = edf)
+ summary(fit)
+ coef(fit)
+ posterior_interval(fit)
+
+ pairs(fit)
 ```
-## fitting
+### fitting to DemYearlyResults
 ```{r}
 fit <- lmer(seat_percentage ~ vote_percentage + (1+vote_percentage|who), data=DemYearlyResults)
 #with edf: unable to evaluate scaled gradientModel failed to converge: degenerate  Hessian with 1 negative eigenvalues
@@ -530,6 +554,9 @@ fit <- lmer(seat_percentage ~ (1|who), data=DemYearlyResults)
 coef(fit)
 confint(fit)
 
+fit <- lmer(seat_percentage ~ (vote_percentage|who), data=DemYearlyResults)
+coef(fit)
+
 fit <- stan_lmer(seat_percentage ~ vote_percentage + (1+vote_percentage|who), control = list(adapt_delta = 0.99), data = DemYearlyResults)
 summary(fit)
 coef(fit)
@@ -537,8 +564,13 @@ posterior_interval(fit)
 
 pairs(fit)
 ```
+# RESULTS
+
+# DISCUSSION
+
+# BIBLIOGRAPHY and APPENDIX
 ## Citations 
-#These two are for the Harvard dataverse files (need to figure out how to use LaTex to diplay the second one)
+These are two citations for the Harvard dataverse files (need to figure out how to use LaTex to diplay the second one)
 <?xml version='1.0' encoding='UTF-8'?><xml><records><record><ref-type name="Dataset">59</ref-type><contributors><authors><author>MIT Election Data and Science Lab</author></authors><secondary-authors><author>MIT Election Data and Science Lab</author></secondary-authors></contributors><titles><title>U.S. House 1976–2018</title></titles><section>2017-11-01</section><dates><year>2017</year></dates><edition>DRAFT VERSION</edition><keywords><keyword>Elections</keyword></keywords><language>English</language><publisher>Harvard Dataverse</publisher><urls><related-urls><url>https://doi.org/10.7910/DVN/IG0UN2</url></related-urls></urls><electronic-resource-num>doi/10.7910/DVN/IG0UN2</electronic-resource-num></record></records></xml>
 
 @incollection{DVN/IG0UN2/ELBYL3_2017,
@@ -552,6 +584,11 @@ version = {V7},
 doi = {10.7910/DVN/IG0UN2/ELBYL3},
 url = {https://doi.org/10.7910/DVN/IG0UN2/ELBYL3}
 }
+---------------
+https://www.census.gov/library/publications/2011/compendia/usa-counties-2011.html#POP
+# to get .xls for population and .xls for area
+https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&ved=2ahUKEwjHkPmp4bftAhV5FlkFHbDHBvwQFjAAegQIAxAC&url=https%3A%2F%2Fwww2.census.gov%2Flibrary%2Fpublications%2F2011%2Fcompendia%2Fusa-counties%2Fexcel%2FMastdata.xls&usg=AOvVaw1ahgb3GWupqOb1UHYbZlMw
+
 
 ## Copyright
 Copyright 2020 Bruce C. Mallory
