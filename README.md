@@ -19,3 +19,7 @@ https://en.wikipedia.org/wiki/Wasted_vote#Efficiency_gap
 
 Masano recommended that I look at the work that Thomas Belin does:
 https://ph.ucla.edu/faculty/belin
+
+.Rmd file comoparing pop density vs. Trump votes in 2016.  Uses LND01.xls and POP01.xls
+https://rstudio-pubs-static.s3.amazonaws.com/227802_af5b38097f0e49fe84c3a6fc8122c5f6.html
+
