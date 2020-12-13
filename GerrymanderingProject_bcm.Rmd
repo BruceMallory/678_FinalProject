@@ -68,8 +68,9 @@ rslts <- filter(rslts, party == "democrat" | party == "republican")
 ```{r echo=FALSE}
 state_abbrs <- read.csv("states.csv")
 
+state_abbrs_all <- filter(state_abbrs, !Code=="DC")
 one_district <- c("WY", "VT", "SD", "ND", "MT", "DE", "AK")
-state_abbrs <- filter(state_abbrs, !Code %in% paste(one_district, "DC"))
+state_abbrs <- filter(state_abbrs, !Code %in% c(one_district, "DC"))
 
 
 repub_2010 <- c("AL", "FL", "GA", "IN", "LA", "MI", "NE", "NH", "NC", "OH", "OK", "PA", "SC", "TN", "UT", "VA", "WI")
@@ -179,6 +180,7 @@ c <- unique(pop10_18$STCOU)
 dropped_from_02_08 <- pop02_08[which(b %notin% c),]
 added_in_10_18 <- pop10_18[which(c %notin% b),]
 
+#cleaning up the two instances, prior to joining, where counties were given "different name" (e.g. "La Salle" vs. "LaSalle")
 pop10_18[pop10_18$STCOU==2195,]$CTYNAME <- "Petersburg Census Area"
 pop02_08[pop02_08$STCOU==22059,]$CTYNAME <- "LaSalle Parish"
 pop <- full_join(pop02_08, pop10_18, by=c("STNAME", "CTYNAME", "STCOU"))
@@ -196,24 +198,65 @@ p_notin_a <- pop[which(p %notin% a),]
 
 
 dnsty <- left_join(pop, area, by="STCOU")
+dnsty <- subset(dnsty, select=-Areaname)
 
-#need to figure out who aside from Kulsilvak is missing area...
+#Because  neither Kuslivak Census Area in AK, nor Oglala Lakota County in SD had records in the area data file, I googled the land area for each of these counties and am manually entering them in to the denisty data.frame.
+dnsty[dnsty$STCOU==2158,]$AREA_2010 <- 17081
+dnsty[dnsty$STCOU==46102,]$AREA_2010 <- 2094
 
+#calculating population density for each year (YEAH - I should be able to do this in a loop, instead of the over-and-over code I've used below - but I'm being lazy).
+dnsty$DENSITY2002 <- round(dnsty$POPESTIMATE2002/dnsty$AREA_2000, 2)
+dnsty$DENSITY2004 <- round(dnsty$POPESTIMATE2004/dnsty$AREA_2000, 2)
+dnsty$DENSITY2006 <- round(dnsty$POPESTIMATE2006/dnsty$AREA_2000, 2)
+dnsty$DENSITY2008 <- round(dnsty$POPESTIMATE2008/dnsty$AREA_2000, 2)
+dnsty$DENSITY2010 <- round(dnsty$POPESTIMATE2010/dnsty$AREA_2010, 2)
+dnsty$DENSITY2012 <- round(dnsty$POPESTIMATE2012/dnsty$AREA_2010, 2)
+dnsty$DENSITY2014 <- round(dnsty$POPESTIMATE2014/dnsty$AREA_2010, 2)
+dnsty$DENSITY2016 <- round(dnsty$POPESTIMATE2016/dnsty$AREA_2010, 2)
+dnsty$DENSITY2018 <- round(dnsty$POPESTIMATE2018/dnsty$AREA_2010, 2)
 
-
-#remove state totals
+#removing state level data and leaving just county data
+dnsty_states <- filter(dnsty, dnsty$STNAME==dnsty$CTYNAME)
 dnsty <- filter(dnsty, !dnsty$STNAME==dnsty$CTYNAME)
-#merge dnsty and area by area:STCOU and dnsty:COUNTY (need to add 8000 to CA's ... etc.) 
-dnsty$STCOU = 0
-st <- 1000
-for (i in 1:nrow(dnsty)) {
-  while (dnsty$COUNTY[i] != 0) {
-   dnsty$STCOU[i] <- st + dnsty$COUNTY  
-  }
-  st <- st + 1000
-}
 
 ```
+
+### (1D) EDA to look at the distribution of county densities in a state, to help me structure my arguement
+```{r}
+ggplot(dnsty[dnsty$STNAME=="Massachusetts",], aes(x=DENSITY2002)) +
+  geom_dotplot()
+
+ggplot(dnsty, aes(x=DENSITY2002)) +
+  geom_histogram(binwidth = 50) +
+  xlim(0,1000)
+
+StateInfo1 <- dnsty %>%
+  group_by(STNAME) %>%
+  summarise(num_counties = n())
+StateInfo1 <- StateInfo1 %>% rename(State = STNAME)
+StateInfo2a <- rslts %>%
+  group_by(state) %>%
+  summarise(num_districts = n_distinct(district))
+StateInfo2b <- data.frame(
+  state=one_district,
+  num_districts = c(1)
+)
+StateInfo2 <- rbind(StateInfo2a, StateInfo2b)
+StateInfo2 <- StateInfo2 %>% rename(Code = state) 
+StateInfo2 <- inner_join(state_abbrs_all, StateInfo2, by="Code")
+StateInfo <- inner_join(StateInfo1, StateInfo2, by="State")
+
+ggplot(StateInfo, aes(y=num_counties, x=num_districts)) +
+  geom_point(size = 0.1) +
+  geom_text(aes(label=Code), size = 2, hjust=-0.5, vjust=-.5) +
+  geom_abline(slope = 1, intercept = 0, color = "red")
+  
+County_dnsty_IQR_2002 <- dnsty %>% 
+  group_by(STNAME) %>% 
+  summarise(dnsty_IQR = IQR(DENSITY2002, na.rm=TRUE))
+
+```
+
 
 ## (2) Impute vote values for uncontested elections.
 ### (2A) build uncontested and contested
@@ -559,6 +602,7 @@ for (yr in seq(2002, 2018, 2)) {
 
 DemYearlyResults <- filter(YearlyResults, party=="democrat")
 DemYearlyResults <- DemYearlyResults %>% inner_join(who, by = c("year", "state"))
+DemYearlyResults$proportion <- round(DemYearlyResults$seat_percentage/DemYearlyResults$vote_percentage, 2) 
 RepubYearlyResults <- filter(YearlyResults, party=="republican")
 RepubYearlyResults <- RepubYearlyResults %>% inner_join(who, by = c("year", "state"))
 ```
@@ -566,8 +610,6 @@ RepubYearlyResults <- RepubYearlyResults %>% inner_join(who, by = c("year", "sta
 ## (3) EDA 
 ### (3A)vote_percentage vs seat_percentage
 ```{r echo=FALSE}
-
-
 ggplot(DemYearlyResults[DemYearlyResults$who==c("D", "R"), ]) +
   aes(x = vote_percentage, y = seat_percentage, color = who) +
   scale_color_manual(values = c("blue", "red")) +
@@ -606,7 +648,14 @@ ggplot(DemYearlyResults) +
   theme_bw()
 
 ```
+### (3B) proportion (seat:vote) vs. who
+```{r}
+ggplot(DemYearlyResults, aes(x=proportion, color=who)) +
+  geom_boxplot()
+```
+
 ### (3B) density vs seat_percentage:vote_percentage
+
 
 ## (4) Model fitting
 ### An example data.frame to think through my model fitting
