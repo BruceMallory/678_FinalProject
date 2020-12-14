@@ -200,9 +200,12 @@ p_notin_a <- pop[which(p %notin% a),]
 dnsty <- left_join(pop, area, by="STCOU")
 dnsty <- subset(dnsty, select=-Areaname)
 
-#Because  neither Kuslivak Census Area in AK, nor Oglala Lakota County in SD had records in the area data file, I googled the land area for each of these counties and am manually entering them in to the denisty data.frame.
+#Because  neither Kuslivak Census Area in AK, nor Oglala Lakota County in SD (or three others) had records in the area data file, I googled the land area for each of these counties and am manually entering them in to the density data.frame.
 dnsty[dnsty$STCOU==2158,]$AREA_2010 <- 17081
 dnsty[dnsty$STCOU==46102,]$AREA_2010 <- 2094
+dnsty[dnsty$STCOU==2230,]$AREA_2000 <- 452
+dnsty[dnsty$STCOU==2275,]$AREA_2000 <- 2556
+dnsty[dnsty$STCOU==8014,]$AREA_2000 <- 33
 
 #calculating population density for each year (YEAH - I should be able to do this in a loop, instead of the over-and-over code I've used below - but I'm being lazy).
 dnsty$DENSITY2002 <- round(dnsty$POPESTIMATE2002/dnsty$AREA_2000, 2)
@@ -251,9 +254,10 @@ ggplot(StateInfo, aes(y=num_counties, x=num_districts)) +
   geom_text(aes(label=Code), size = 2, hjust=-0.5, vjust=-.5) +
   geom_abline(slope = 1, intercept = 0, color = "red")
 ```
-### (1E) build the clumping data.frame to join onto the Dem & Repub YearlyResults data frames 
+### (1E) build the clumping1 data.frames to join onto the Dem & Repub YearlyResults data frames 
 ```{r}
-clumping <- dnsty %>% 
+#Trying IQR and stDev to measure spread
+clumping1 <- dnsty %>% 
   group_by(STNAME) %>% 
   summarise("2002" = IQR(DENSITY2002, na.rm=TRUE),
             "2004" = IQR(DENSITY2004, na.rm=TRUE),
@@ -265,15 +269,37 @@ clumping <- dnsty %>%
             "2016" = IQR(DENSITY2016, na.rm=TRUE),
             "2018" = IQR(DENSITY2018, na.rm=TRUE)
   )
-clumping <- clumping %>%  rename(State = STNAME)
-clumping <- inner_join(clumping, state_abbrs_all, by="State")
-clumping <- select(clumping, -c('State', 'Abbrev'))
-clumping <- clumping %>%  rename(state = Code)
-clumping <- clumping %>% pivot_longer(!state, names_to="year", values_to="density_IQR")
-clumping <- filter(clumping, (clumping$state %notin% one_district))
-clumping <- filter(clumping, !(clumping$year == 1994 & clumping$state == "LA"))
-clumping <- filter(clumping, !(clumping$year == 2008 & clumping$state == "AR"))
-clumping$year <- as.numeric(clumping$year)
+clumping1 <- clumping1 %>%  rename(State = STNAME)
+clumping1 <- inner_join(clumping1, state_abbrs_all, by="State")
+clumping1 <- select(clumping1, -c('State', 'Abbrev'))
+clumping1 <- clumping1 %>%  rename(state = Code)
+clumping1 <- clumping1 %>% pivot_longer(!state, names_to="year", values_to="density_IQR")
+clumping1 <- filter(clumping1, (clumping1$state %notin% one_district))
+clumping1 <- filter(clumping1, !(clumping1$year == 1994 & clumping1$state == "LA"))
+clumping1 <- filter(clumping1, !(clumping1$year == 2008 & clumping1$state == "AR"))
+clumping1$year <- as.numeric(clumping1$year)
+
+clumping2 <- dnsty %>% 
+  group_by(STNAME) %>% 
+  summarise("2002" = sd(DENSITY2002, na.rm=TRUE),
+            "2004" = sd(DENSITY2004, na.rm=TRUE),
+            "2006" = sd(DENSITY2006, na.rm=TRUE),
+            "2008" = sd(DENSITY2008, na.rm=TRUE),
+            "2010" = sd(DENSITY2010, na.rm=TRUE),
+            "2012" = sd(DENSITY2012, na.rm=TRUE),
+            "2014" = sd(DENSITY2014, na.rm=TRUE),
+            "2016" = sd(DENSITY2016, na.rm=TRUE),
+            "2018" = sd(DENSITY2018, na.rm=TRUE)
+  )
+clumping2 <- clumping2 %>%  rename(State = STNAME)
+clumping2 <- inner_join(clumping2, state_abbrs_all, by="State")
+clumping2 <- select(clumping2, -c('State', 'Abbrev'))
+clumping2 <- clumping2 %>%  rename(state = Code)
+clumping2 <- clumping2 %>% pivot_longer(!state, names_to="year", values_to="density_sd")
+clumping2 <- filter(clumping2, (clumping2$state %notin% one_district))
+clumping2 <- filter(clumping2, !(clumping2$year == 1994 & clumping2$state == "LA"))
+clumping2 <- filter(clumping2, !(clumping2$year == 2008 & clumping2$state == "AR"))
+clumping2$year <- as.numeric(clumping2$year)
 ```
 
 ## (2) Impute vote values for uncontested elections.
@@ -621,11 +647,13 @@ for (yr in seq(2002, 2018, 2)) {
 DemYearlyResults <- filter(YearlyResults, party=="democrat")
 DemYearlyResults <- DemYearlyResults %>% inner_join(who, by = c("year", "state"))
 DemYearlyResults$proportion <- round(DemYearlyResults$seat_percentage/DemYearlyResults$vote_percentage, 2) 
-DemYearlyResults <- inner_join(DemYearlyResults, clumping, c("year", "state"))
+DemYearlyResults <- inner_join(DemYearlyResults, clumping1, c("year", "state"))
+DemYearlyResults <- inner_join(DemYearlyResults, clumping2, c("year", "state"))
 RepubYearlyResults <- filter(YearlyResults, party=="republican")
 RepubYearlyResults <- RepubYearlyResults %>% inner_join(who, by = c("year", "state"))
 RepubYearlyResults$proportion <- round(RepubYearlyResults$seat_percentage/RepubYearlyResults$vote_percentage, 2) 
-RepubYearlyResults <- inner_join(RepubYearlyResults, clumping, c("year", "state"))
+RepubYearlyResults <- inner_join(RepubYearlyResults, clumping1, c("year", "state"))
+RepubYearlyResults <- inner_join(RepubYearlyResults, clumping2, c("year", "state"))
 ```
 
 ## (3) EDA 
@@ -671,26 +699,32 @@ ggplot(DemYearlyResults) +
 ```
 ### (3B) who vs. proportion (seat:vote)
 ```{r}
-ggplot(DemYearlyResults, aes(y=proportion, color=who)) +
-  geom_boxplot() +
-  scale_color_manual(values = c("blue", "green", "red")) +
-  theme_bw()
+ggplot(DemYearlyResults, aes(y=proportion, x=who, color=who)) +
+  labs(title="Proportion (pop_seats / pop_vote) for DEMOCRATS", y="1 = proportionally fair") +
+  geom_violin(size=2) +
+  scale_color_manual(name="who redistricted?", values = c("blue", "green", "red"),
+                     labels= c("Democrats", "Independent", "Republicans")) +
+  geom_abline(slope=0, intercept=1, color = "black", ) +
+  theme(axis.title.x=element_blank(), axis.ticks.x=element_blank(), axis.text.x=element_blank())
 ```
 
 ### (3B) density vs proportion (seat:vote)
 ```{r}
 ggplot(DemYearlyResults) +
-  aes(x = vote_percentage, y = seat_percentage, color = who) +
-  scale_color_manual(values = c("blue", "green", "red")) +
-  geom_point(aes(size = seats, color=who),
-             alpha = 0.5) +
-  labs(x = "% of votes that were Democratic", y = "% of seats that are Democratic", title = "Proportional Representation?", subtitle = "Democratic vs. Rebulican vs. Independent controlled redistricting on Democratic results", col = "who redistricted", size = "number of seats") +
-  geom_abline(slope = 1,
-              intercept = 0,
-              color = "grey") +
+  aes(x = density_IQR, y = proportion, color=who) +
+  geom_point(aes(size = seats), alpha = 0.5) +
+  geom_text(aes(label=state), size = 2, hjust=-0.5, vjust=-.5) +
   geom_smooth(method=lm, se=FALSE) +
-  xlim(0, 80) +
   theme_bw()
+
+ggplot(DemYearlyResults) +
+  aes(x = density_sd, y = proportion) +
+  geom_point(aes(size = seats), alpha = 0.5) +
+  geom_text(aes(label=state), size = 2, hjust=-0.5, vjust=-.5) +
+  geom_smooth(method=lm, se=FALSE) +
+  theme_bw()
+
+
 ```
 ## (4) Model fitting
 ### An example data.frame to think through my model fitting
@@ -699,13 +733,13 @@ States <- read_csv("States.csv")
 
 edf12 <- data.frame(year = rep("2012", nrow(States)),
                   state = States,
-                  clumping = round(abs(rnorm(nrow(States), 150, 200)), 1),
+                  clumping1 = round(abs(rnorm(nrow(States), 150, 200)), 1),
                   group = rep(factor(c("Dem", "Rep", "Ind", "Split")), length.out=nrow(States)),
                   votes = round(60 + rnorm(nrow(States), 0, 10), 1),
                   seats = round(runif(nrow(States), 0, 100),1))
 edf14 <- data.frame(year = rep("2014", nrow(States)),
                   state = States,
-                  clumping = round(abs(rnorm(nrow(States), 150, 200)), 1),
+                  clumping1 = round(abs(rnorm(nrow(States), 150, 200)), 1),
                   group = rep(factor(c("Dem", "Rep", "Ind", "Split")), length.out=nrow(States)),
                   votes = round(60 + rnorm(nrow(States), 0, 10), 1),
                   seats = round(runif(nrow(States), 0, 100),1))
@@ -723,7 +757,7 @@ fit <- lmer(seats ~ votes + (1+votes|group), data=edf)
  coef(fit)
  confint(fit)
 
- fit <- stan_lmer(seats ~ clumping + votes + (1+votes|group), control = list(adapt_delta = 0.99), data = edf)
+ fit <- stan_lmer(seats ~ clumping1 + votes + (1+votes|group), control = list(adapt_delta = 0.99), data = edf)
  summary(fit)
  coef(fit)
  posterior_interval(fit)
