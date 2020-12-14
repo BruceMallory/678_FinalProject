@@ -8,7 +8,7 @@ output: pdf_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load("HelpersMG", "readr", "ggplot2", "lmer4", "rstanarm", "dplyr", "stringr", "e1071", "ggrepel", "moderndive", "broom")
+pacman::p_load("HelpersMG", "readr", "ggplot2", "lmer4", "rstanarm", "dplyr", "stringr", "e1071", "ggrepel", "moderndive", "broom", "tidyr")
 options(dplyr.summarise.inform = FALSE)
 
 #moderndive allows geom_parallel_slopes() ... see https://campus.datacamp.com/courses/intermediate-regression-in-r/parallel-slopes-1?ex=1
@@ -95,7 +95,7 @@ for (i in seq(2002, 2010, 2)) {
                   who = c("I"))
   who <- rbind(who, a, b, c)
 }
-who <- filter(who, !(state=="AZ" & year == 2008))
+who <- filter(who, !(state=="AR" & year == 2008))
 
 for (i in seq(2012, 2018, 2)) {
   a <- data.frame(year = i,
@@ -250,13 +250,31 @@ ggplot(StateInfo, aes(y=num_counties, x=num_districts)) +
   geom_point(size = 0.1) +
   geom_text(aes(label=Code), size = 2, hjust=-0.5, vjust=-.5) +
   geom_abline(slope = 1, intercept = 0, color = "red")
-  
-County_dnsty_IQR_2002 <- dnsty %>% 
-  group_by(STNAME) %>% 
-  summarise(dnsty_IQR = IQR(DENSITY2002, na.rm=TRUE))
-
 ```
-
+### (1E) build the clumping data.frame to join onto the Dem & Repub YearlyResults data frames 
+```{r}
+clumping <- dnsty %>% 
+  group_by(STNAME) %>% 
+  summarise("2002" = IQR(DENSITY2002, na.rm=TRUE),
+            "2004" = IQR(DENSITY2004, na.rm=TRUE),
+            "2006" = IQR(DENSITY2006, na.rm=TRUE),
+            "2008" = IQR(DENSITY2008, na.rm=TRUE),
+            "2010" = IQR(DENSITY2010, na.rm=TRUE),
+            "2012" = IQR(DENSITY2012, na.rm=TRUE),
+            "2014" = IQR(DENSITY2014, na.rm=TRUE),
+            "2016" = IQR(DENSITY2016, na.rm=TRUE),
+            "2018" = IQR(DENSITY2018, na.rm=TRUE)
+  )
+clumping <- clumping %>%  rename(State = STNAME)
+clumping <- inner_join(clumping, state_abbrs_all, by="State")
+clumping <- select(clumping, -c('State', 'Abbrev'))
+clumping <- clumping %>%  rename(state = Code)
+clumping <- clumping %>% pivot_longer(!state, names_to="year", values_to="density_IQR")
+clumping <- filter(clumping, (clumping$state %notin% one_district))
+clumping <- filter(clumping, !(clumping$year == 1994 & clumping$state == "LA"))
+clumping <- filter(clumping, !(clumping$year == 2008 & clumping$state == "AR"))
+clumping$year <- as.numeric(clumping$year)
+```
 
 ## (2) Impute vote values for uncontested elections.
 ### (2A) build uncontested and contested
@@ -603,8 +621,11 @@ for (yr in seq(2002, 2018, 2)) {
 DemYearlyResults <- filter(YearlyResults, party=="democrat")
 DemYearlyResults <- DemYearlyResults %>% inner_join(who, by = c("year", "state"))
 DemYearlyResults$proportion <- round(DemYearlyResults$seat_percentage/DemYearlyResults$vote_percentage, 2) 
+DemYearlyResults <- inner_join(DemYearlyResults, clumping, c("year", "state"))
 RepubYearlyResults <- filter(YearlyResults, party=="republican")
 RepubYearlyResults <- RepubYearlyResults %>% inner_join(who, by = c("year", "state"))
+RepubYearlyResults$proportion <- round(RepubYearlyResults$seat_percentage/RepubYearlyResults$vote_percentage, 2) 
+RepubYearlyResults <- inner_join(RepubYearlyResults, clumping, c("year", "state"))
 ```
 
 ## (3) EDA 
@@ -648,15 +669,29 @@ ggplot(DemYearlyResults) +
   theme_bw()
 
 ```
-### (3B) proportion (seat:vote) vs. who
+### (3B) who vs. proportion (seat:vote)
 ```{r}
-ggplot(DemYearlyResults, aes(x=proportion, color=who)) +
-  geom_boxplot()
+ggplot(DemYearlyResults, aes(y=proportion, color=who)) +
+  geom_boxplot() +
+  scale_color_manual(values = c("blue", "green", "red")) +
+  theme_bw()
 ```
 
-### (3B) density vs seat_percentage:vote_percentage
-
-
+### (3B) density vs proportion (seat:vote)
+```{r}
+ggplot(DemYearlyResults) +
+  aes(x = vote_percentage, y = seat_percentage, color = who) +
+  scale_color_manual(values = c("blue", "green", "red")) +
+  geom_point(aes(size = seats, color=who),
+             alpha = 0.5) +
+  labs(x = "% of votes that were Democratic", y = "% of seats that are Democratic", title = "Proportional Representation?", subtitle = "Democratic vs. Rebulican vs. Independent controlled redistricting on Democratic results", col = "who redistricted", size = "number of seats") +
+  geom_abline(slope = 1,
+              intercept = 0,
+              color = "grey") +
+  geom_smooth(method=lm, se=FALSE) +
+  xlim(0, 80) +
+  theme_bw()
+```
 ## (4) Model fitting
 ### An example data.frame to think through my model fitting
 ```{r echo=FALSE}
