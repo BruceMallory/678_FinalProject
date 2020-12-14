@@ -701,7 +701,7 @@ ggplot(DemYearlyResults) +
 ```{r}
 ggplot(DemYearlyResults, aes(y=proportion, x=who, color=who)) +
   labs(title="Proportion (pop_seats / pop_vote) for DEMOCRATS", y="1 = proportionally fair") +
-  geom_violin(size=2) +
+  geom_violin(size=1.5, fill="cornflowerblue") +
   scale_color_manual(name="who redistricted?", values = c("blue", "green", "red"),
                      labels= c("Democrats", "Independent", "Republicans")) +
   geom_abline(slope=0, intercept=1, color = "black", ) +
@@ -713,18 +713,19 @@ ggplot(DemYearlyResults, aes(y=proportion, x=who, color=who)) +
 ggplot(DemYearlyResults) +
   aes(x = density_IQR, y = proportion, color=who) +
   geom_point(aes(size = seats), alpha = 0.5) +
-  geom_text(aes(label=state), size = 2, hjust=-0.5, vjust=-.5) +
+  geom_text(aes(label=state), size = 2, hjust=-0.5, vjust=-.5, check_overlap = TRUE) +
   geom_smooth(method=lm, se=FALSE) +
+  xlim(0,250) +
   theme_bw()
 
 ggplot(DemYearlyResults) +
-  aes(x = density_sd, y = proportion) +
+  aes(x = density_sd, y = proportion, color=who) +
   geom_point(aes(size = seats), alpha = 0.5) +
   geom_text(aes(label=state), size = 2, hjust=-0.5, vjust=-.5) +
   geom_smooth(method=lm, se=FALSE) +
   theme_bw()
 
-
+#do an mean(density_) and mean(proportion) for each state, then label the states...  will help to see state patterns
 ```
 ## (4) Model fitting
 ### An example data.frame to think through my model fitting
