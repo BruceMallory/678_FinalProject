@@ -1,9 +1,11 @@
 ---
-title: "It's not fair"
-title: "Gerrymandering by whom"
+title: "It's not fair: Gerrymandering by whom"
 author: "Bruce Mallory"
 date: "12/2/2020"
-output: pdf_document
+output:
+  pdf_document:
+    fig_caption: yes
+  
 ---
 
 ```{r setup, include=FALSE}
@@ -18,8 +20,8 @@ options(dplyr.summarise.inform = FALSE)
 # INTRODUCTION
 
 # METHODS
-## (1) Load and clean election data
-### (1A) build rslts data.frame
+## (1) Load, clean and impute election data
+### (1A) build "rslts" data.frame
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
 #wget("https://dataverse.harvard.edu/api/access/datafile/:persistentId?persistentId=doi:10.7910/DVN/IG0UN2/ELBYL3")
 rslts <- read.table("ELBYL3", header = TRUE)
@@ -28,6 +30,7 @@ rslts <- read.table("ELBYL3", header = TRUE)
 rslts <- filter(rslts, special = TRUE)
 
 # From the data set, I've kept seven columns for my analysis and filtered out for years 2002 and beyond
+# Originally I collected data for 1992 and beyond, but decided to use a smaller data set.  There is data cleaning built into the following code that is based on using years >= 1992.
 rslts <-
   subset(
     rslts,
@@ -49,23 +52,16 @@ rslts$percent <- round(100 * rslts$candidatevotes / rslts$totalvotes, 2)
 rslts$party[rslts$party == "democratic-farmer-labor"] <- "democrat"
 rslts$party[rslts$party == "independent-republican"] <- "republican"
 
-# In preparation for collecting the uncontested elections, I checked to see whether or not I should include the "libertarian" party.  They ran candidates in 2,018 elections between 1990 and 2018.  But never got higher than 31% of the vote and their mean vote percentage was 3.4% (with a distribution of results that was heavily skewed right with "skewness" = 3.4).  As such I have not included the "libertarian" party as a major party, and have confined my analysis to Democrats and Republicans.
-libs <- filter(rslts, party == "libertarian")
-num_libertarian_canditates <- nrow(libs)
-high_percent_libertarians <- max(libs$percent)
-mean_percent_libertarians <- mean(libs$percent)
-skew_percent_libertarians <- skewness(libs$percent)
-
 # Remove all states that only have one representative to congress - in these states there is never a need for redistricting (WY, VT, SD, ND, MT, DE, AK)
 rslts <- filter(rslts, !state %in% c("WY", "VT", "SD", "ND", "MT", "DE", "AK"))
 
 # Include candidates who are either republican or democrat
 rslts <- filter(rslts, party == "democrat" | party == "republican")
-
-
 ```
-### (1B) build grouping variable
+
+### (1B) build "who" data.frma (the grouping variable)
 ```{r echo=FALSE}
+#This code builds the "who" data.frame which will get joined with the election results data.frame (DemYearlyResults and RepubYearlyResults)
 state_abbrs <- read.csv("states.csv")
 
 state_abbrs_all <- filter(state_abbrs, !Code=="DC")
@@ -111,7 +107,250 @@ for (i in seq(2012, 2018, 2)) {
 }
 who$who <- as.factor(who$who)
 ```
-### (1C) build density data.frame
+
+### (1C) Impute vote values for uncontested elections.
+#### (1C-i) build uncontested and contested
+```{r echo=FALSE}
+
+#Initialize data.frames to collect data
+uncontested <- data.frame(
+  year = integer(),
+  state = character(),
+  district = integer(),
+  candidate = character(),
+  party = character(),
+  candidatevotes = integer(),
+  totalvotes = integer(),
+  percent = numeric()
+)
+
+contested <- data.frame(
+  year = integer(),
+  state = character(),
+  district = integer(),
+  candidate = character(),
+  party = character(),
+  candidatevotes = integer(),
+  totalvotes = integer(),
+  percent = numeric()
+)
+
+YearlySummary <-
+  data.frame(year = integer(),
+             uncontested = integer(),
+             competitive = integer())
+
+#(A) For each year, for each state, for each district: collect up the districts where there was NOT both a Democrat and a Republican (uncontested), and the districts where there WAS both Dem & Repub (contested)
+
+for (yr in seq(2002, 2018, 2)) {
+  #count1 will count the number of uncontested races
+  #count2 will count the number of competitive races
+  count1 <- 0
+  count2 <- 435
+  for (st in state_abbrs$Code) {
+    low <-
+      min(rslts[rslts$year == yr & rslts$state == st,]$district)
+    high <-
+      max(rslts[rslts$year == yr & rslts$state == st,]$district)
+    
+    for (dst in seq(low, high)) {
+      Dems <- (rslts[rslts$year == yr & rslts$state == st &
+                       rslts$district == dst,]$party == "democrat")
+      Repubs <- (rslts[rslts$year == yr & rslts$state == st &
+                         rslts$district == dst,]$party == "republican")
+      blowout <- (rslts[rslts$year == yr & rslts$state == st &
+                          rslts$district == dst,]$percent > 55)
+      if (sum(blowout, na.rm = TRUE) == 1) {
+        count2 <- count2 - 1
+      }
+      
+      if (sum(Dems, na.rm = TRUE) == 0 |
+          sum(Repubs, na.rm = TRUE) == 0) {
+        new <- rslts[rslts$year == yr & rslts$state == st &
+                       rslts$district == dst,]
+        count1 <- count1 + 1
+        uncontested <- rbind(uncontested, new)
+      } else {
+        new <- rslts[rslts$year == yr & rslts$state == st &
+                       rslts$district == dst,]
+        contested <- rbind(contested, new)
+      }
+    }
+  }
+  
+  new <-
+    data.frame(year = yr,
+               uncontested = count1,
+               competitive = count2)
+  YearlySummary <- rbind(YearlySummary, new)
+}
+```
+
+#### (1C-ii) build YearlyVoteTotals and YearlyNoContesteds
+```{r echo=FALSE}
+
+#Initialize data.frames to collect data
+YearlyVoteTotals <-
+  data.frame(
+    year = integer(),
+    state = character(),
+    party = character(),
+    max = integer(),
+    min = integer(),
+    mean = integer(),
+    adjusted_sum = integer(),
+    adjusted_percent = numeric()
+  )
+
+YearlyNoContesteds <-
+  data.frame(
+    year = integer(),
+    state = character(),
+    num_districts = integer()
+  )
+
+#(B) Going year by year, state by state, find max and min votes for each party and store in a data.frame (which will be used to impute missing values)
+
+for (yr in seq(2002, 2018, 2)) {
+  for (st in state_abbrs$Code) {
+    low <-
+      min(rslts[rslts$year == yr & rslts$state == st,]$district)
+    high <-
+      max(rslts[rslts$year == yr & rslts$state == st,]$district)
+    demvotes <- c()
+    repubvotes <- c()
+    
+    #Just looking for max and min in the contested elections
+    ContestedDistricts <- unique(contested[contested$year == yr &
+                                             contested$state == st, ]$district)
+    for (dst in ContestedDistricts) {
+      demvotes <-
+        append(demvotes, contested[contested$year == yr &
+                                     contested$state == st &
+                                     contested$district == dst &
+                                     contested$party == "democrat", ]$candidatevotes)
+      repubvotes <-
+        append(repubvotes, contested[contested$year == yr &
+                                       contested$state == st &
+                                       contested$district == dst &
+                                       contested$party == "republican", ]$candidatevotes)
+    }
+    if (length(ContestedDistricts)==0) {
+      Districts <- unique(rslts[rslts$year == yr &
+                                             rslts$state == st, ]$district)
+      TotalDistricts <- max(Districts)-min(Districts)+1
+      new <-
+        data.frame(year = yr,
+                   state = st,
+                   num_districts = TotalDistricts
+                   )
+      YearlyNoContesteds <- rbind(YearlyNoContesteds, new)
+      
+    } else {
+      newDem <-
+        data.frame(
+          year = yr,
+          state = st,
+          party = "democrat",
+          max = max(demvotes),
+          min = min(demvotes),
+          adjusted_sum = 0,
+          adjusted_percent = 0
+        )
+      newRepub <-
+        data.frame(
+          year = yr,
+          state = st,
+          party = "republican",
+          max = max(repubvotes),
+          min = min(repubvotes),
+          adjusted_sum = 0,
+          adjusted_percent = 0
+        )
+      YearlyVoteTotals <- rbind(YearlyVoteTotals, newDem, newRepub)
+    }
+  }
+}
+```
+
+#### (1C-iii) build "imputed" data.frame
+```{r echo=FALSE}
+
+#NOTE: As the YearlyNoContesteds data.frame shows, there were two times where the whole states delegation was uncontested (1994 in "LA" and 2008 in "AR").  Since there is no data to impute from for each of these instances, I've removed them from both the "rslts" data.frame and the "uncontested" data.frame.
+rslts <- filter(rslts, !(rslts$year == 1994 & rslts$state == "LA"))
+rslts <- filter(rslts, !(rslts$year == 2008 & rslts$state == "AR"))
+uncontested <- filter(uncontested, !(uncontested$year == 1994 & uncontested$state == "LA"))
+uncontested <- filter(uncontested, !(uncontested$year == 2008 & uncontested$state == "AR"))
+
+state_abbrs <- filter(state_abbrs, !Code %in% c("WY", "VT", "SD", "ND", "MT", "DE", "AK","DC"))
+#Initialize data.frames to collect data
+imputed <- data.frame(
+  year = integer(),
+  state = character(),
+  district = integer(),
+  candidate = character(),
+  party = character(),
+  candidatevotes = integer(),
+  totalvotes = integer(),
+  percent = numeric()
+)
+
+#(C) Create a data.frame of imputed "candidates" with their vote "totals" (minimum # of votes that party got in a district in that state for that election cycle)  And while doing this, replace rslts$candidatevotes with the imputed vote "total" for the uncontested candidate (maximum # of votes that party got in a district for that election cycle).
+
+for (i in (1:nrow(uncontested))) {
+  yr <- uncontested$year[i]
+  st <- uncontested$state[i]
+  dst <- uncontested$district[i]
+  if (uncontested$party[i] == "democrat") {
+    new_party <- "republican"
+    new_votes_loser <-
+      (YearlyVoteTotals[YearlyVoteTotals$year == yr &
+                          YearlyVoteTotals$state == st &
+                          YearlyVoteTotals$party == "republican",]$min)
+    new_votes_winner <-
+      (YearlyVoteTotals[YearlyVoteTotals$year == yr &
+                          YearlyVoteTotals$state == st &
+                          YearlyVoteTotals$party == "republican",]$max)
+  } else {
+    new_party <-  "democrat"
+    new_votes_loser <-
+      (YearlyVoteTotals[YearlyVoteTotals$year == yr &
+                          YearlyVoteTotals$state == st &
+                          YearlyVoteTotals$party == "democrat",]$min)
+    new_votes_winner <-
+      (YearlyVoteTotals[YearlyVoteTotals$year == yr &
+                          YearlyVoteTotals$state == st &
+                          YearlyVoteTotals$party == "democrat",]$max)
+  }
+  new_votes_total <- new_votes_loser + new_votes_winner
+  
+  new <- data.frame(
+    year = uncontested$year[i],
+    state = uncontested$state[i],
+    district = uncontested$district[i],
+    candidate = "imputed",
+    party = new_party,
+    candidatevotes = new_votes_loser,
+    totalvotes = new_votes_total,
+    percent = round(100 * new_votes_loser / new_votes_total, 2)
+  )
+  
+  imputed <- rbind(imputed, new)
+  
+  #replace the votes and vote total for the uncontested candidate
+  rw <-
+    which(uncontested$year == yr &
+            uncontested$state == st & uncontested$district == dst)
+  uncontested$candidatevotes[rw] <- new_votes_winner
+  uncontested$totalvotes[rw] <- new_votes_total
+  uncontested$percent[rw] <-
+    round(100 * new_votes_winner / new_votes_total, 2)
+  
+}
+
+```
+
+### (1D) build "density" data.frame
 ```{r echo=FALSE}
 #wget("https://www2.census.gov/programs-surveys/popest/datasets/2000-2009/counties/totals/co-est2009-alldata.csv")
 #wget("https://www2.census.gov/programs-surveys/popest/datasets/2010-2019/counties/totals/co-est2019-alldata.csv")
@@ -224,39 +463,9 @@ dnsty <- filter(dnsty, !dnsty$STNAME==dnsty$CTYNAME)
 
 ```
 
-### (1D) EDA to look at the distribution of county densities in a state, to help me structure my arguement
-```{r}
-ggplot(dnsty[dnsty$STNAME=="Massachusetts",], aes(x=DENSITY2002)) +
-  geom_dotplot()
-
-ggplot(dnsty, aes(x=DENSITY2002)) +
-  geom_histogram(binwidth = 50) +
-  xlim(0,1000)
-
-StateInfo1 <- dnsty %>%
-  group_by(STNAME) %>%
-  summarise(num_counties = n())
-StateInfo1 <- StateInfo1 %>% rename(State = STNAME)
-StateInfo2a <- rslts %>%
-  group_by(state) %>%
-  summarise(num_districts = n_distinct(district))
-StateInfo2b <- data.frame(
-  state=one_district,
-  num_districts = c(1)
-)
-StateInfo2 <- rbind(StateInfo2a, StateInfo2b)
-StateInfo2 <- StateInfo2 %>% rename(Code = state) 
-StateInfo2 <- inner_join(state_abbrs_all, StateInfo2, by="Code")
-StateInfo <- inner_join(StateInfo1, StateInfo2, by="State")
-
-ggplot(StateInfo, aes(y=num_counties, x=num_districts)) +
-  geom_point(size = 0.1) +
-  geom_text(aes(label=Code), size = 2, hjust=-0.5, vjust=-.5) +
-  geom_abline(slope = 1, intercept = 0, color = "red")
-```
-### (1E) build the clumping1 data.frames to join onto the Dem & Repub YearlyResults data frames 
-```{r}
-#Trying IQR and stDev to measure spread
+### (1E) build "clumping" data.frame
+```{r echo=FALSE}
+#Calculating yearly density IQR by state as a measure of clumping
 clumping1 <- dnsty %>% 
   group_by(STNAME) %>% 
   summarise("2002" = IQR(DENSITY2002, na.rm=TRUE),
@@ -279,6 +488,7 @@ clumping1 <- filter(clumping1, !(clumping1$year == 1994 & clumping1$state == "LA
 clumping1 <- filter(clumping1, !(clumping1$year == 2008 & clumping1$state == "AR"))
 clumping1$year <- as.numeric(clumping1$year)
 
+#Calculating yearly density stDev by state as a measure of clumping
 clumping2 <- dnsty %>% 
   group_by(STNAME) %>% 
   summarise("2002" = sd(DENSITY2002, na.rm=TRUE),
@@ -300,248 +510,12 @@ clumping2 <- filter(clumping2, (clumping2$state %notin% one_district))
 clumping2 <- filter(clumping2, !(clumping2$year == 1994 & clumping2$state == "LA"))
 clumping2 <- filter(clumping2, !(clumping2$year == 2008 & clumping2$state == "AR"))
 clumping2$year <- as.numeric(clumping2$year)
+
+#Hope to build a clumping3 variable that would use the Census' Urban centers as a way to measure the amount of clumping within a state
+#clumping3 <-
 ```
 
-## (2) Impute vote values for uncontested elections.
-### (2A) build uncontested and contested
-```{r echo=FALSE}
-
-#Initialize data.frames to collect data
-uncontested <- data.frame(
-  year = integer(),
-  state = character(),
-  district = integer(),
-  candidate = character(),
-  party = character(),
-  candidatevotes = integer(),
-  totalvotes = integer(),
-  percent = numeric()
-)
-
-contested <- data.frame(
-  year = integer(),
-  state = character(),
-  district = integer(),
-  candidate = character(),
-  party = character(),
-  candidatevotes = integer(),
-  totalvotes = integer(),
-  percent = numeric()
-)
-
-YearlySummary <-
-  data.frame(year = integer(),
-             uncontested = integer(),
-             competitive = integer())
-
-#(A) For each year, for each state, for each district: collect up the districts where there was NOT both a Democrat and a Republican (uncontested), and the districts where there WAS both Dem & Repub (contested)
-
-for (yr in seq(2002, 2018, 2)) {
-  #count1 will count the number of uncontested races
-  #count2 will count the number of competitive races
-  count1 <- 0
-  count2 <- 435
-  for (st in state_abbrs$Code) {
-    low <-
-      min(rslts[rslts$year == yr & rslts$state == st,]$district)
-    high <-
-      max(rslts[rslts$year == yr & rslts$state == st,]$district)
-    
-    for (dst in seq(low, high)) {
-      Dems <- (rslts[rslts$year == yr & rslts$state == st &
-                       rslts$district == dst,]$party == "democrat")
-      Repubs <- (rslts[rslts$year == yr & rslts$state == st &
-                         rslts$district == dst,]$party == "republican")
-      blowout <- (rslts[rslts$year == yr & rslts$state == st &
-                          rslts$district == dst,]$percent > 55)
-      if (sum(blowout, na.rm = TRUE) == 1) {
-        count2 <- count2 - 1
-      }
-      
-      if (sum(Dems, na.rm = TRUE) == 0 |
-          sum(Repubs, na.rm = TRUE) == 0) {
-        new <- rslts[rslts$year == yr & rslts$state == st &
-                       rslts$district == dst,]
-        count1 <- count1 + 1
-        uncontested <- rbind(uncontested, new)
-      } else {
-        new <- rslts[rslts$year == yr & rslts$state == st &
-                       rslts$district == dst,]
-        contested <- rbind(contested, new)
-      }
-    }
-  }
-  
-  new <-
-    data.frame(year = yr,
-               uncontested = count1,
-               competitive = count2)
-  YearlySummary <- rbind(YearlySummary, new)
-}
-```
-### (2B) build YearlyVoteTotals and YearlyNoContesteds
-```{r echo=FALSE}
-
-#Initialize data.frames to collect data
-YearlyVoteTotals <-
-  data.frame(
-    year = integer(),
-    state = character(),
-    party = character(),
-    max = integer(),
-    min = integer(),
-    mean = integer(),
-    adjusted_sum = integer(),
-    adjusted_percent = numeric()
-  )
-
-YearlyNoContesteds <-
-  data.frame(
-    year = integer(),
-    state = character(),
-    num_districts = integer()
-  )
-
-#(B) Going year by year, state by state, find max and min votes for each party and store in a data.frame (which will be used to impute missing values)
-
-for (yr in seq(2002, 2018, 2)) {
-  for (st in state_abbrs$Code) {
-    low <-
-      min(rslts[rslts$year == yr & rslts$state == st,]$district)
-    high <-
-      max(rslts[rslts$year == yr & rslts$state == st,]$district)
-    demvotes <- c()
-    repubvotes <- c()
-    
-    #Just looking for max and min in the contested elections
-    ContestedDistricts <- unique(contested[contested$year == yr &
-                                             contested$state == st, ]$district)
-    for (dst in ContestedDistricts) {
-      demvotes <-
-        append(demvotes, contested[contested$year == yr &
-                                     contested$state == st &
-                                     contested$district == dst &
-                                     contested$party == "democrat", ]$candidatevotes)
-      repubvotes <-
-        append(repubvotes, contested[contested$year == yr &
-                                       contested$state == st &
-                                       contested$district == dst &
-                                       contested$party == "republican", ]$candidatevotes)
-    }
-    if (length(ContestedDistricts)==0) {
-      Districts <- unique(rslts[rslts$year == yr &
-                                             rslts$state == st, ]$district)
-      TotalDistricts <- max(Districts)-min(Districts)+1
-      new <-
-        data.frame(year = yr,
-                   state = st,
-                   num_districts = TotalDistricts
-                   )
-      YearlyNoContesteds <- rbind(YearlyNoContesteds, new)
-      
-    } else {
-      newDem <-
-        data.frame(
-          year = yr,
-          state = st,
-          party = "democrat",
-          max = max(demvotes),
-          min = min(demvotes),
-          adjusted_sum = 0,
-          adjusted_percent = 0
-        )
-      newRepub <-
-        data.frame(
-          year = yr,
-          state = st,
-          party = "republican",
-          max = max(repubvotes),
-          min = min(repubvotes),
-          adjusted_sum = 0,
-          adjusted_percent = 0
-        )
-      YearlyVoteTotals <- rbind(YearlyVoteTotals, newDem, newRepub)
-    }
-  }
-}
-```
-### (2C) build imputed
-```{r echo=FALSE}
-
-#NOTE: As the YearlyNoContesteds data.frame shows, there were two times where the whole states delegation was uncontested (1994 in "LA" and 2008 in "AR").  Since there is no data to impute from for each of these instances, I've removed them from both the "rslts" data.frame and the "uncontested" data.frame.
-rslts <- filter(rslts, !(rslts$year == 1994 & rslts$state == "LA"))
-rslts <- filter(rslts, !(rslts$year == 2008 & rslts$state == "AR"))
-uncontested <- filter(uncontested, !(uncontested$year == 1994 & uncontested$state == "LA"))
-uncontested <- filter(uncontested, !(uncontested$year == 2008 & uncontested$state == "AR"))
-
-state_abbrs <- filter(state_abbrs, !Code %in% c("WY", "VT", "SD", "ND", "MT", "DE", "AK","DC"))
-#Initialize data.frames to collect data
-imputed <- data.frame(
-  year = integer(),
-  state = character(),
-  district = integer(),
-  candidate = character(),
-  party = character(),
-  candidatevotes = integer(),
-  totalvotes = integer(),
-  percent = numeric()
-)
-
-#(C) Create a data.frame of imputed "candidates" with their vote "totals" (minimum # of votes that party got in a district in that state for that election cycle)  And while doing this, replace rslts$candidatevotes with the imputed vote "total" for the uncontested candidate (maximum # of votes that party got in a district for that election cycle).
-
-for (i in (1:nrow(uncontested))) {
-  yr <- uncontested$year[i]
-  st <- uncontested$state[i]
-  dst <- uncontested$district[i]
-  if (uncontested$party[i] == "democrat") {
-    new_party <- "republican"
-    new_votes_loser <-
-      (YearlyVoteTotals[YearlyVoteTotals$year == yr &
-                          YearlyVoteTotals$state == st &
-                          YearlyVoteTotals$party == "republican",]$min)
-    new_votes_winner <-
-      (YearlyVoteTotals[YearlyVoteTotals$year == yr &
-                          YearlyVoteTotals$state == st &
-                          YearlyVoteTotals$party == "republican",]$max)
-  } else {
-    new_party <-  "democrat"
-    new_votes_loser <-
-      (YearlyVoteTotals[YearlyVoteTotals$year == yr &
-                          YearlyVoteTotals$state == st &
-                          YearlyVoteTotals$party == "democrat",]$min)
-    new_votes_winner <-
-      (YearlyVoteTotals[YearlyVoteTotals$year == yr &
-                          YearlyVoteTotals$state == st &
-                          YearlyVoteTotals$party == "democrat",]$max)
-  }
-  new_votes_total <- new_votes_loser + new_votes_winner
-  
-  new <- data.frame(
-    year = uncontested$year[i],
-    state = uncontested$state[i],
-    district = uncontested$district[i],
-    candidate = "imputed",
-    party = new_party,
-    candidatevotes = new_votes_loser,
-    totalvotes = new_votes_total,
-    percent = round(100 * new_votes_loser / new_votes_total, 2)
-  )
-  
-  imputed <- rbind(imputed, new)
-  
-  #replace the votes and vote total for the uncontested candidate
-  rw <-
-    which(uncontested$year == yr &
-            uncontested$state == st & uncontested$district == dst)
-  uncontested$candidatevotes[rw] <- new_votes_winner
-  uncontested$totalvotes[rw] <- new_votes_total
-  uncontested$percent[rw] <-
-    round(100 * new_votes_winner / new_votes_total, 2)
-  
-}
-
-```
-### (2D) put it all together into Results and DemYearlyResults & RepubYearlyResults
+### (1F) put it all together into Results and DemYearlyResults & RepubYearlyResults
 ```{r warning=FALSE, echo=FALSE}
 Results <- rbind(contested, uncontested, imputed)
 Results$winner <- c("?")
@@ -656,60 +630,85 @@ RepubYearlyResults <- inner_join(RepubYearlyResults, clumping1, c("year", "state
 RepubYearlyResults <- inner_join(RepubYearlyResults, clumping2, c("year", "state"))
 ```
 
-## (3) EDA 
-### (3A)vote_percentage vs seat_percentage
-```{r echo=FALSE}
-ggplot(DemYearlyResults[DemYearlyResults$who==c("D", "R"), ]) +
-  aes(x = vote_percentage, y = seat_percentage, color = who) +
-  scale_color_manual(values = c("blue", "red")) +
-  geom_point(aes(size = seats, color=who),
-             alpha = 0.5) +
-  labs(x = "% of votes that were Democratic", y = "% of seats that are Democratic", title = "Proportional Representation?", subtitle = "Democratic vs. Rebulican controlled redistricting on Democratic results", col = "who redistricted", size = "number of seats") +
-  geom_abline(slope = 1,
-              intercept = 0,
-              color = "grey") +
-  xlim(20, 80) +
-  theme_bw()
-
-ggplot(RepubYearlyResults[RepubYearlyResults$who==c("D", "R"), ]) +
-  aes(x = vote_percentage, y = seat_percentage, color = who) +
-  scale_color_manual(values = c("blue", "red")) +
-  geom_point(aes(size = seats, color=who),
-             alpha = 0.5) +
-  labs(x = "% of votes that were Republican", y = "% of seats that are Republican", title = "Proportional Representation?", subtitle = "Democratic vs. Rebulican controlled redistricting on Republican results", col = "who redistricted", size = "number of seats") +
-  geom_abline(slope = 1,
-              intercept = 0,
-              color = "grey") +
-  xlim(20, 80) +
-  theme_bw()
-
-ggplot(DemYearlyResults) +
-  aes(x = vote_percentage, y = seat_percentage, color = who) +
-  scale_color_manual(values = c("blue", "green", "red")) +
-  geom_point(aes(size = seats, color=who),
-             alpha = 0.5) +
-  labs(x = "% of votes that were Democratic", y = "% of seats that are Democratic", title = "Proportional Representation?", subtitle = "Democratic vs. Rebulican vs. Independent controlled redistricting on Democratic results", col = "who redistricted", size = "number of seats") +
-  geom_abline(slope = 1,
-              intercept = 0,
-              color = "grey") +
-  geom_smooth(method=lm, se=FALSE) +
-  xlim(0, 80) +
-  theme_bw()
-
-```
-### (3B) who vs. proportion (seat:vote)
-```{r}
+## (2) EDA
+### (2A) who vs. political proportionality (seat/vote)
+```{r echo=FALSE, messge=FALSE, warning=FALSE}
 ggplot(DemYearlyResults, aes(y=proportion, x=who, color=who)) +
-  labs(title="Proportion (pop_seats / pop_vote) for DEMOCRATS", y="1 = proportionally fair") +
-  geom_violin(size=1.5, fill="cornflowerblue") +
+  labs(title="Proportion (prop_seats / prop_vote) for DEMOCRATS", y="1 = proportionally fair", 
+       caption="Note: each point represents a state in a given year") +
+  geom_violin(size=1, fill="cornflowerblue") +
   scale_color_manual(name="who redistricted?", values = c("blue", "green", "red"),
                      labels= c("Democrats", "Independent", "Republicans")) +
   geom_abline(slope=0, intercept=1, color = "black", ) +
+  geom_dotplot(binaxis="y", stackdir="center", dotsize = .5, color="cornflowerblue", binwidth = .05) +
   theme(axis.title.x=element_blank(), axis.ticks.x=element_blank(), axis.text.x=element_blank())
+
 ```
 
-### (3B) density vs proportion (seat:vote)
+### (2B) size of district vs. political proportionality (seat/vote)
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+ggplot(DemYearlyResults, aes(log(seats), proportion, color=who))+
+  geom_point() + geom_smooth(method=lm, se=FALSE) +
+  scale_color_manual(name="who redistricted?", values = c("blue", "green", "red"),
+                     labels= c("Democrats", "Independent", "Republicans")) +
+  geom_abline(slope = 0,
+              intercept = 1,
+              color = "grey") +
+  #geom_text(aes(label=state), size = 2, hjust=-0.5, vjust=-.5) +
+  theme_bw()
+
+fit1 <- lmer(proportion ~ (log(seats)|who) -1, data=DemYearlyResults)
+summary(fit1)
+```
+
+### (2C) EDA to look at the distribution of county densities in a state, to help me structure my arguement
 ```{r}
+ggplot(dnsty[dnsty$STNAME=="Massachusetts",], aes(x=DENSITY2002)) +
+  geom_dotplot()
+
+ggplot(dnsty, aes(x=DENSITY2002)) +
+  geom_histogram(binwidth = 50) +
+  xlim(0,1000)
+
+StateInfo1 <- dnsty %>%
+  group_by(STNAME) %>%
+  summarise(num_counties = n())
+StateInfo1 <- StateInfo1 %>% rename(State = STNAME)
+StateInfo2a <- rslts %>%
+  group_by(state) %>%
+  summarise(num_districts = n_distinct(district))
+StateInfo2b <- data.frame(
+  state=one_district,
+  num_districts = c(1)
+)
+StateInfo2 <- rbind(StateInfo2a, StateInfo2b)
+StateInfo2 <- StateInfo2 %>% rename(Code = state) 
+StateInfo2 <- inner_join(state_abbrs_all, StateInfo2, by="Code")
+StateInfo <- inner_join(StateInfo1, StateInfo2, by="State")
+
+ggplot(StateInfo, aes(y=num_counties, x=num_districts)) +
+  geom_point(size = 0.1) +
+  geom_text(aes(label=Code), size = 2, hjust=-0.5, vjust=-.5) +
+  geom_abline(slope = 1, intercept = 0, color = "red")
+```
+
+### (2D) density vs political proportionality (seat/vote)
+```{r}
+ggplot(DemYearlyResults) +
+  aes(x = density_IQR, y = proportion) +
+  geom_point(aes(size = seats), alpha = 0.5) +
+  geom_text(aes(label=state), size = 2, hjust=-0.5, vjust=-.5, check_overlap = TRUE) +
+  geom_smooth(method=lm, se=FALSE) +
+  xlim(0,250) +
+  theme_bw()
+
+ggplot(DemYearlyResults) +
+  aes(x = density_sd, y = proportion) +
+  geom_point(aes(size = seats), alpha = 0.5) +
+  geom_text(aes(label=state), size = 2, hjust=-0.5, vjust=-.5) +
+  geom_smooth(method=lm, se=FALSE) +
+  theme_bw()
+
 ggplot(DemYearlyResults) +
   aes(x = density_IQR, y = proportion, color=who) +
   geom_point(aes(size = seats), alpha = 0.5) +
@@ -725,9 +724,11 @@ ggplot(DemYearlyResults) +
   geom_smooth(method=lm, se=FALSE) +
   theme_bw()
 
-#do an mean(density_) and mean(proportion) for each state, then label the states...  will help to see state patterns
+#do a mean(density_) and mean(proportion) for each state, then label the states...  will help to see state patterns
 ```
-## (4) Model fitting
+
+
+## (3) Model fitting
 ### An example data.frame to think through my model fitting
 ```{r echo=FALSE}
 States <- read_csv("States.csv")
@@ -765,6 +766,7 @@ fit <- lmer(seats ~ votes + (1+votes|group), data=edf)
 
  pairs(fit)
 ```
+
 ### fitting to DemYearlyResults
 ```{r echo=FALSE}
 fit <- lmer(seat_percentage ~ vote_percentage + (1+vote_percentage|who), data=DemYearlyResults)
@@ -784,13 +786,90 @@ posterior_interval(fit)
 
 pairs(fit)
 ```
+
+
 # RESULTS
 
 # DISCUSSION
 
 # BIBLIOGRAPHY and APPENDIX
+## Metrics
+### (I) Who to include?
+In looking at vote results I had to decide which parties to include.  As such combined Minnesota's "democratic-farmer-labor" party with the democrat party.  I looked at the entirety of listed parties, to see what parties aside from the democrats and the republicans where significant either in the number of candidates or the votes.  The only party that was worthy of consideration aside from the two major parties was the Libertarian party.
+The Libertarians ran candidates in 2,018 elections between 1990 and 2018.  But never got higher than 31% of the vote and their mean vote percentage was 3.4% (with a distribution of results that was heavily skewed right with "skewness" = 3.4).  As such I have not included the "libertarian" party as a major party, and have confined my analysis to Democrats and Republicans.
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+table(rslts$party)
+
+libs <- filter(rslts, party == "libertarian")
+num_libertarian_canditates <- nrow(libs)
+high_percent_libertarians <- max(libs$percent)
+mean_percent_libertarians <- mean(libs$percent)
+skew_percent_libertarians <- skewness(libs$percent)
+```
+
+### (II) Is it politically fair?
+### (IIa)vote_percentage vs seat_percentage
+Originally, I looked at representing "politically fair" where the outcome variable was the proportion of house seats won and the predictor was the proportion of votes won.  If an election was fair then these two proportions would be equal.  State-years where the vote_proportion and the seat_proportion fell on the y=x line (grey line in the graphs), were proportionally equal/fair.  Additionally I used color to note who did the redistricting and how many seats were decided (with the notion that for a state with a small number of seats, it would not be surprising to have a big difference in vote and seat proportions, e.g. NH-2016 democrats had 46% of the vote but 0% of the two congressional seats).
+Ultimately I decided that this representation was harder to visualize.  And the clumping variable was not a predictor variable for the proportion of seats won, but rather a possible predictor variable for political proportionality.  As such I decided to center my analysis around a measure of political fairness (seat_proportion / vote_proportion). 
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="33%", fig.cap= "Scatterplots to look at the relationship between vote_proportion and seat_proportion filtered by who made the redistricting decision"}
+
+ggplot(DemYearlyResults[DemYearlyResults$who==c("D", "R"), ]) +
+  aes(x = vote_percentage, y = seat_percentage, color = who) +
+  scale_color_manual(values = c("blue", "red")) +
+  geom_point(aes(size = seats, color=who),
+             alpha = 0.5) +
+  labs(x = "% of votes that were Democratic", y = "% of seats that are Democratic", title = "Proportional Representation?", subtitle = "Democratic vs. Rebulican controlled redistricting on Democratic results", col = "who redistricted", size = "number of seats") +
+  geom_abline(slope = 1,
+              intercept = 0,
+              color = "grey") +
+  xlim(20, 80) + ylim(0,100) +
+  theme_bw()
+
+ggplot(RepubYearlyResults[RepubYearlyResults$who==c("D", "R"), ]) +
+  aes(x = vote_percentage, y = seat_percentage, color = who) +
+  scale_color_manual(values = c("blue", "red")) +
+  geom_point(aes(size = seats, color=who),
+             alpha = 0.5) +
+  labs(x = "% of votes that were Republican", y = "% of seats that are Republican", title = "Proportional Representation?", subtitle = "Democratic vs. Rebulican controlled redistricting on Republican results", col = "who redistricted", size = "number of seats") +
+  geom_abline(slope = 1,
+              intercept = 0,
+              color = "grey") +
+  xlim(20, 80) + ylim(0,100) +
+  theme_bw()
+
+ggplot(DemYearlyResults) +
+  aes(x = vote_percentage, y = seat_percentage, color = who) +
+  scale_color_manual(values = c("blue", "green", "red")) +
+  geom_point(aes(size = seats, color=who),
+             alpha = 0.5) +
+  labs(x = "% of votes that were Democratic", y = "% of seats that are Democratic", title = "Proportional Representation?", subtitle = "Democratic vs. Rebulican vs. Independent controlled redistricting on Democratic results", col = "who redistricted", size = "number of seats") +
+  geom_abline(slope = 1,
+              intercept = 0,
+              color = "grey") +
+  geom_smooth(method=lm, se=FALSE) +
+  xlim(20, 80) + ylim(0,100) +
+  theme_bw()
+
+```
+
+### (IIb) The efficiency gap & wasted votes  
+When "cracking" or "packing," voters are moved into or out of districts to dilute the power of their vote.  The efficiency gap is a mathematical calculation that "counts the number of votes each party wastes in an election to determine whether either party enoyed a systematic advantice in turning votes into seats." ("How the Efficiency Gap Works," Petry, 2015, http://bettergov.nc.lwvnet.org/files/how_the_efficiency_gap_standard_works.pdf).  I have not yet taken the time to write the code to calculate the efficiency gap and then explore how illustrative it is as a measure of political fairness.
+
+### (III) How to measure clumping.
+### (IIIa) IQR of county level population density
+### (IIIb) standard deviation of county level population density
+### (IIIc) comparing state level population density, with county level population density, with Census defined "Urban centers"
+
+### (IV) Who is making the redistricting decisions
+These are the sources I used to create the group variable "who" for each election decade (2002-2010 & 2012-2018).  The "who" variable attributes the responsibility for the redistricting to either D, R, or I (Democratically controlled state legislatures, Republican controlled state legislatures, or Independent).  I've defined "Independent" as not Democratically controlled nor Republican controlled.  "Independent" includes court ordered redistricting, split-party redistricting, and non-political commissions.  
+
+https://www.ncsl.org/documents/statevote/2010_Legis_and_State_post.pdf  
+https://www.brennancenter.org/our-work/research-reports/redistricting-and-congressional-control-first-look  
+https://www.brennancenter.org/sites/default/files/2019-08/Report_CGR-2010-edition.pdf  
+
+
 ## Citations 
-(need to figure out how to use LaTex to display this citation)
+(need to figure out how to use LaTex or ?? to display this citation)
 @incollection{DVN/IG0UN2/ELBYL3_2017,
 author = {MIT Election Data and Science Lab},
 publisher = {Harvard Dataverse},
