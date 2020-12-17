@@ -1,5 +1,5 @@
 ---
-title: "It's not fair: Gerrymandering by whom?"
+title: "It's not fair: gerrymandering by whom?"
 author: "Bruce Mallory"
 date: "12/2/2020"
 output:
@@ -10,14 +10,14 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load("HelpersMG", "readr", "ggplot2", "lmer4", "rstanarm", "dplyr", "stringr", "e1071", "ggrepel", "moderndive", "broom", "tidyr", "knitr")
+pacman::p_load("HelpersMG", "readr", "ggplot2", "lmer4", "rstanarm", "dplyr", "stringr", "e1071", "ggrepel", "moderndive", "broom", "tidyr", "knitr", "pander", "kableExtra")
 options(dplyr.summarise.inform = FALSE)
 
 #moderndive allows geom_parallel_slopes() ... see https://campus.datacamp.com/courses/intermediate-regression-in-r/parallel-slopes-1?ex=1
 ```
-# ABSTRACT
+## ABSTRACT
 
-# INTRODUCTION
+## INTRODUCTION
 Every ten years, after the census is completed, the 435 House Representatives are reapportioned among the states based on the current populations.  Then each state redraws its electoral districts, so the districts within a state have approximately equal populations.  Aside from mandating that the districts have equal populations, the Constitution is silent about the process and leaves the redrawing of districts to the states.  Redistricting laws in the different states vary as does the responsibility for redistricting.  In some states redistricting is done by the courts, in other states there are independent commissions.  And in the majority of states, redistricting is done by the state legislator and the governor.  Of these states, in 2011, twenty-three had a state legislature and a governor who belonged to the same political party.
 
 In assessing the fairness of the redrawn electoral districts, there are four overlapping and often conflicting, perspectives.  
@@ -32,7 +32,7 @@ And the fourth perspective on drawing “fair” electoral districts is most cle
 
 The analysis that I am doing in this paper will only focus on proportional-political-representation and will not address minority representation or community representation.  All the while understanding that the Voting Rights Act impacts the drawing of districts in a manner that can skew proportional-political-representation (ironically, assuring majority-minority districts is a form of packing and can dilute Democratic representation).  And the goal of keeping communities of interest together can also impact proportional-political-representation.
 
-In my current analysis, I will focus on the proportion of seats to votes.  Specifically, the (% of seats) to the (% of votes).  From a proportional-political-representation perspective, if an election is “fair,” then the proportion of seat to votes should be 1.  And if you look at the seats and votes from one party’s perspective, if the proportion is greater than 1 then that party was advantaged.  As an example, in Massachusetts the representation proportion in 2018 was (100% seats) / (66% votes) = 1.52.  (In the appendix, I introduce another measure of political fairness called the “efficiency gap.”  As I continue to work on this paper, I will look at how the “efficiency gap” compares with the proportional-political-representation outcome that I’m currently using.)
+In my current analysis, I will focus on the proportion of seats to votes.  Specifically, I define the proportional-political-representation coefficient (PPR) to be  the (% of seats) divided by the (% of votes).  From a proportional-political-representation perspective, if an election is “fair,” then the proportion of seat to votes should be 1.  And if you look at the seats and votes from one party’s perspective, if the proportion is greater than 1 then that party was advantaged.  As an example, in Massachusetts the representation proportion in 2018 was (100% seats) / (66% votes) = 1.52.  (In the appendix, I introduce another measure of political fairness called the “efficiency gap.”  As I continue to work on this paper, I will look at how the “efficiency gap” compares with the PPR outcome that I’m currently using.)
 
 In my analysis, I am looking for differences in redistricting between those states that were controlled by Republicans, by Democrats, and by Others.
 
@@ -44,7 +44,7 @@ Though we know that those who are drawing political boundaries can pack a distri
 
 The other predictor variable that I did include in my model fitting, aside from who did the redistricting, is the number of districts in the state.  Clearly if there are only 2 congressional seats, proportional-political-representation is unlikely.  And at the other end of the spectrum as an example are the 61 seats the Democratically controlled legislature in California had to work with when they drew district boundaries in 2001 – a number that gives numerous opportunities for cracking and packing.
 
-# METHODS
+## METHODS
 In building the data frames for my analysis I’ve worked from: 1) election results from the Harvard Dataverse website, 2) An analysis done by the Brennan Center for Justice of who was responsible for redistricting in each state, and 3) population and land area data for 2000 and 2010, downloaded from Census.gov.
 
 Aside from some data cleaning and data frame joining, the major data wrangling issue that I dealt with was imputing vote numbers for candidates who ran unopposed.  The vote tallies for unopposed candidates are not reflective of the number of Democratic and Republican voters in a district.  In it’s extreme, there are Florida’s vote records where the winning candidate is noted as having 1 vote.  Since my outcome measure was comparing % of seats (an accurate number) I needed a method get a more accurate total of votes within a state.
@@ -62,7 +62,7 @@ When done, I had a data.frame for both Democratic results and Republican results
 #wget("https://dataverse.harvard.edu/api/access/datafile/:persistentId?persistentId=doi:10.7910/DVN/IG0UN2/ELBYL3")
 rslts <- read.table("ELBYL3", header = TRUE)
 
-# Historical note.  In the data file, there was a column "special."  There were two sets of elections where special="TRUE."  Both is Texas.  One in 1996, the other 2006.  In the first the US District Court found that the redrawn districts were unconstitutional and ordered a special election to redo the primary election - then held a general election in December.  And again in 2006, the US Supreme Court found that numerous redrawn districts were unconstitutional and again ordered a new district map and a special election for the primaries with a December general election.  Since these special elections were "redoing" the primary elections in those districts, I've removed them from the data set, thus keeping only the general elections in the data set.  These were the only cases in the data file where there where special elections.  And because of this story of split aliegance of who was doing the redistricting, I've put TX in the "independent" group for 2000 redistricting.
+# Historical note.  In the data file, there was a column "special."  There were two sets of elections where special="TRUE."  Both is Texas.  One in 1996, the other 2006.  In the first the US District Court found that the redrawn districts were unconstitutional and ordered a special election to redo the primary election - then held a general election in December.  And again in 2006, the US Supreme Court found that numerous redrawn districts were unconstitutional and again ordered a new district map and a special election for the primaries with a December general election.  Since these special elections were "redoing" the primary elections in those districts, I've removed them from the data set, thus keeping only the general elections in the data set.  These were the only cases in the data file where there where special elections.  And because of this story of split aliegance of who was doing the redistricting, I've put TX in the "Other" group for 2000 redistricting.
 rslts <- filter(rslts, special = TRUE)
 
 # From the data set, I've kept seven columns for my analysis and filtered out for years 2002 and beyond
@@ -126,7 +126,7 @@ for (i in seq(2002, 2010, 2)) {
                   who = c("D"))
   c <- data.frame(year = i,
                   state = ind_2000,
-                  who = c("I"))
+                  who = c("O"))
   who <- rbind(who, a, b, c)
 }
 who <- filter(who, !(state=="AR" & year == 2008))
@@ -140,7 +140,7 @@ for (i in seq(2012, 2018, 2)) {
                   who = c("D"))
   c <- data.frame(year = i,
                   state = ind_2010,
-                  who = c("I"))
+                  who = c("O"))
   who <- rbind(who, a, b, c)
 }
 who$who <- as.factor(who$who)
@@ -555,7 +555,8 @@ clumping2$year <- as.numeric(clumping2$year)
 #clumping3 <-
 ```
 
-```{r warning=FALSE, echo=FALSE, fig.cap="The Democratic Results data frame", fig.align="center"}
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.pos="H", fig.cap="The Democratic Results data frame"}
+
 ### (1F) put it all together into Results and DemYearlyResults & RepubYearlyResults
 
 Results <- rbind(contested, uncontested, imputed)
@@ -661,61 +662,64 @@ for (yr in seq(2002, 2018, 2)) {
 
 DemYearlyResults <- filter(YearlyResults, party=="democrat")
 DemYearlyResults <- DemYearlyResults %>% inner_join(who, by = c("year", "state"))
-DemYearlyResults$proportion <- round(DemYearlyResults$seat_percentage/DemYearlyResults$vote_percentage, 2) 
+DemYearlyResults$ppr <- round(DemYearlyResults$seat_percentage/DemYearlyResults$vote_percentage, 2) 
 DemYearlyResults <- inner_join(DemYearlyResults, clumping1, c("year", "state"))
 DemYearlyResults <- inner_join(DemYearlyResults, clumping2, c("year", "state"))
 RepubYearlyResults <- filter(YearlyResults, party=="republican")
 RepubYearlyResults <- RepubYearlyResults %>% inner_join(who, by = c("year", "state"))
-RepubYearlyResults$proportion <- round(RepubYearlyResults$seat_percentage/RepubYearlyResults$vote_percentage, 2) 
+RepubYearlyResults$ppr <- round(RepubYearlyResults$seat_percentage/RepubYearlyResults$vote_percentage, 2) 
 RepubYearlyResults <- inner_join(RepubYearlyResults, clumping1, c("year", "state"))
 RepubYearlyResults <- inner_join(RepubYearlyResults, clumping2, c("year", "state"))
 
-kable(head(DemYearlyResults, 5), align="lllrccccrrr", format.args = list(big.mark = ","), digits=2)
+kable(head(subset(DemYearlyResults, select=c(year, state, party, seats, who, ppr)),
+           5), align="lllccc", digits=2)
 ```
 
-## (2) EDA
-### (2A) who vs. political proportionality (seat/vote)
+## EDA
+##### who vs. PPR (seat/vote)
 Just looking at the comparison between the three groups who redistricted, it's visually clear that the democrats were advantaged when Democratic controlled states redistricted, and Democrats where disadvantaged when Republican controlled states redistricted.  But we already knew this was true.
-```{r echo=FALSE, messge=FALSE, warning=FALSE}
-ggplot(DemYearlyResults, aes(y=proportion, x=who, color=who)) +
-  labs(title="Proportion (prop_seats / prop_vote) for DEMOCRATS", y="1 = proportionally fair", 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.height=4, fig.show="hold", fig.cap="PPR (prop_seats / prop_vote) for DEMOCRATS"}
+
+ggplot(DemYearlyResults, aes(y=ppr, x=who, color=who)) +
+  labs(y="PPR (1 = proportionally fair)", 
        caption="Note: each point represents a state in a given year") +
   geom_violin(size=1, fill="cornflowerblue") +
   scale_color_manual(name="who redistricted?", values = c("blue", "green", "red"),
-                     labels= c("Democrats", "Independent", "Republicans")) +
+                     labels= c("Democrats", "Other", "Republicans")) +
   geom_abline(slope=0, intercept=1, color = "black", ) +
   geom_dotplot(binaxis="y", stackdir="center", dotsize = .5, color="cornflowerblue", binwidth = .05) +
   theme(axis.title.x=element_blank(), axis.ticks.x=element_blank(), axis.text.x=element_blank())
 
 ```
 
-### (2B) size of district vs. political proportionality (seat/vote)
-In looking at the relationship between the size of the district and proportional-political-representation, there is no visual pattern in the aggreate.  And the grouped pattern is as expected when the redistricting was not done by either Democrats or Republicans: the size of the seat doesn't appear to influence the "fairness."  But when looking at Democratly controlled redistricting it appears that more seats there are to redistrict the more likely the results advantage the Democrats.  Whereas with Republican controlled redistricting, the opposite appears true. 
-```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="50%", fig.cap=""}
-ggplot(DemYearlyResults, aes(log(seats), proportion)) +
+
+##### size of district vs. political proportionality (seat/vote)
+In looking at the relationship between the size of the district and PPR, there is no visual pattern in the aggregate.  And the grouped pattern is as expected when the redistricting was not done by either Democrats or Republicans: the size of the seat doesn't appear to influence the "fairness."  But when looking at Democratly controlled redistricting it appears that more seats there are to redistrict the more likely the results advantage the Democrats.  Whereas with Republican controlled redistricting, the opposite appears true. 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.pos="H", out.width="50%", fig.cap="How do the number of seats to be redistricted relate to the PPR (proportional-political-representation coefficient)"}
+ggplot(DemYearlyResults, aes(log(seats), ppr)) +
   geom_point() + geom_smooth(method=lm) +
   geom_abline(slope = 0,
               intercept = 1,
               color = "grey") +
-  #geom_text(aes(label=state), size = 2, hjust=-0.5, vjust=-.5) +
   theme_bw()
 
-ggplot(DemYearlyResults, aes(log(seats), proportion, color=who))+
+ggplot(DemYearlyResults, aes(log(seats), ppr, color=who))+
   geom_point() + geom_smooth(method=lm, se=FALSE) +
   scale_color_manual(name="who redistricted?", values = c("blue", "green", "red"),
-                     labels= c("Democrats", "Independent", "Republicans")) +
+                     labels= c("Democrats", "Other", "Republicans")) +
   geom_abline(slope = 0,
               intercept = 1,
               color = "grey") +
-  #geom_text(aes(label=state), size = 2, hjust=-0.5, vjust=-.5) +
   theme_bw()
 ```
 
 
 This is what it looks like with just the politically redistricted states over the years 2002 to 2018.  I've removed all states where some other entity aside from Democratic or Republican controlled legislatures, did the redistricting.
-```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="50%", fig.cap=""}
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.height=4, fig.pos="H", fig.cap="What's the pattern with seats and politically controlled redistricting"}
 
-ggplot(DemYearlyResults[DemYearlyResults$who != "I",], aes(log(seats), proportion)) +
+ggplot(DemYearlyResults[DemYearlyResults$who != "O",], aes(log(seats), ppr)) +
   geom_point() + geom_smooth(method=lm) +
   geom_abline(slope = 0,
               intercept = 1,
@@ -723,43 +727,45 @@ ggplot(DemYearlyResults[DemYearlyResults$who != "I",], aes(log(seats), proportio
   #geom_text(aes(label=state), size = 2, hjust=-0.5, vjust=-.5) +
   theme_bw()
 
-fit <- lm(proportion~log(seats), DemYearlyResults[DemYearlyResults$who != "I",])
-summary(fit)
+fit <- lm(ppr~log(seats), DemYearlyResults[DemYearlyResults$who != "O",])
 ```
 
 
+```{r echo=FALSE, fig.pos="H"}
+pander(summary(fit))
+```
 
-## (3) Model fitting
-```{r echo=FALSE, warning=FALSE, message=FALSE}
-ggplot(DemYearlyResults, aes(log(seats), proportion, color=who))+
+## Model fitting
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.height=4}
+ggplot(DemYearlyResults, aes(log(seats), ppr, color=who))+
   geom_point() + geom_smooth(method=lm, se=FALSE) +
   scale_color_manual(name="who redistricted?", values = c("blue", "green", "red"),
-                     labels= c("Democrats", "Independent", "Republicans")) +
+                     labels= c("Democrats", "Other", "Republicans")) +
   geom_abline(slope = 0,
               intercept = 1,
               color = "grey") +
   #geom_text(aes(label=state), size = 2, hjust=-0.5, vjust=-.5) +
   theme_bw()
 
-fit1 <- lmer(proportion ~ (log(seats)|who) -1, data=DemYearlyResults)
-summary(fit1)
+fit1 <- lmer(ppr ~ (log(seats)|who) -1, data=DemYearlyResults)
+#summary(fit1)
 
-fit2 <- lmer(proportion ~ log(seats) + (1+seats|who), data=DemYearlyResults)
-summary(fit2)
+fit2 <- lmer(ppr ~ log(seats) + (1+seats|who), data=DemYearlyResults)
+#summary(fit2)
 
-fit3 <- lm(proportion ~ who + who:log(seats) + 0, data=DemYearlyResults)
-summary(fit3)
+fit3 <- lm(ppr ~ who + who:log(seats) + 0, data=DemYearlyResults)
+#summary(fit3)
 
-fit4 <- lm(proportion ~ who, data = DemYearlyResults)
-summary(fit4)
+fit4 <- lm(ppr ~ who, data = DemYearlyResults)
+#summary(fit4)
 ```
 
-# RESULTS
+## RESULTS
 
-# DISCUSSION
+## DISCUSSION
 
-# BIBLIOGRAPHY and APPENDIX
-## Metrics
+## BIBLIOGRAPHY and APPENDIX
+### Metrics
 ### (I) Who to include?
 In looking at vote results I had to decide which parties to include.  As such combined Minnesota's "democratic-farmer-labor" party with the democrat party.  I looked at the entirety of listed parties, to see what parties aside from the democrats and the republicans where significant either in the number of candidates or the votes.  The only party that was worthy of consideration aside from the two major parties was the Libertarian party.
 The Libertarians ran candidates in 2,018 elections between 1990 and 2018.  But never got higher than 31% of the vote and their mean vote percentage was 3.4% (with a distribution of results that was heavily skewed right with "skewness" = 3.4).  As such I have not included the "libertarian" party as a major party, and have confined my analysis to Democrats and Republicans.
@@ -775,9 +781,8 @@ skew_percent_libertarians <- skewness(libs$percent)
 ### (II) Is it politically fair?
 #### (IIa)vote_percentage vs seat_percentage
 Originally, I looked at representing "politically fair" where the outcome variable was the proportion of house seats won and the predictor was the proportion of votes won.  If an election was fair then these two proportions would be equal.  State-years where the vote_proportion and the seat_proportion fell on the y=x line (grey line in the graphs), were proportionally equal/fair.  Additionally I used color to note who did the redistricting and how many seats were decided (with the notion that for a state with a small number of seats, it would not be surprising to have a big difference in vote and seat proportions, e.g. NH-2016 democrats had 46% of the vote but 0% of the two congressional seats).
-Ultimately I decided that this representation was harder to visualize.  And the clumping variable was not a predictor variable for the proportion of seats won, but rather a possible predictor variable for political proportionality.  As such I decided to center my analysis around a measure of political fairness (seat_proportion / vote_proportion). 
-
-```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="33%", fig.cap="Scatterplots to look at the relationship between vote_proportion and seat_proportion filtered by who made the redistricting decision"}
+Ultimately I decided that this representation was harder to visualize.  And the clumping variable was not a predictor variable for the proportion of seats won, but rather a possible predictor variable for political proportionality.  As such I decided to center my analysis around a measure of political fairness (seat_proportion / vote_proportion).  
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="33%"}
 
 ggplot(DemYearlyResults[DemYearlyResults$who==c("D", "R"), ]) +
   aes(x = vote_percentage, y = seat_percentage, color = who) +
@@ -808,7 +813,7 @@ ggplot(DemYearlyResults) +
   scale_color_manual(values = c("blue", "green", "red")) +
   geom_point(aes(size = seats, color=who),
              alpha = 0.5) +
-  labs(x = "% of votes that were Democratic", y = "% of seats that are Democratic", title = "Proportional Representation?", subtitle = "Democratic vs. Rebulican vs. Independent controlled redistricting on Democratic results", col = "who redistricted", size = "number of seats") +
+  labs(x = "% of votes that were Democratic", y = "% of seats that are Democratic", title = "Proportional Representation?", subtitle = "Democratic vs. Rebulican vs. Other controlled redistricting on Democratic results", col = "who redistricted", size = "number of seats") +
   geom_abline(slope = 1,
               intercept = 0,
               color = "grey") +
@@ -825,7 +830,7 @@ When "cracking" or "packing," voters are moved into or out of districts to dilut
 I'm still trying to wrap my head around how to appropriately measure "clumping" so that the measurement will have meaning in the context of packing and cracking.
 
 #### (IIIa) EDA to look at the distribution of county densities, to help structure a "clumping" metric
-```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="33%", fig.cap="Scatterplots to try and get a sense of how county population densities clump"}
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="33%"}
 
 StateInfo1 <- dnsty %>%
   group_by(STNAME) %>%
@@ -865,9 +870,9 @@ ggplot(dnsty, aes(x=DENSITY2002)) +
 ```
 #### (IIIa) IQR of county level population density
 For each state, for each year, I've calculated the spread of county population densities
-```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="33%", fig.cap="Initial plots and regression looking at using IQR as a measure of clumping"}
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="50%", fig.cap="Initial plots and regression looking at using IQR as a measure of clumping"}
 ggplot(DemYearlyResults) +
-  aes(x = density_IQR, y = proportion) +
+  aes(x = density_IQR, y = ppr) +
   geom_point(aes(size = seats), alpha = 0.5) +
   geom_text(aes(label=state), size = 2, hjust=-0.5, vjust=-.5, check_overlap = TRUE) +
   geom_smooth(method=lm, se=FALSE) +
@@ -875,7 +880,7 @@ ggplot(DemYearlyResults) +
   theme_bw()
 
 ggplot(DemYearlyResults) +
-  aes(x = density_IQR, y = proportion, color=who) +
+  aes(x = density_IQR, y = ppr, color=who) +
   geom_point(aes(size = seats), alpha = 0.5) +
   geom_text(aes(label=state), size = 2, hjust=-0.5, vjust=-.5, check_overlap = TRUE) +
   geom_smooth(method=lm, se=FALSE) +
@@ -884,40 +889,45 @@ ggplot(DemYearlyResults) +
 
 #do a mean(density_) and mean(proportion) for each state, then label the states...  will help to see state patterns
 
-fit <- lm(proportion ~ density_IQR, data=DemYearlyResults)
-summary(fit)
+fit <- lm(ppr ~ density_IQR, data=DemYearlyResults)
+
 ```
+
+```{r echo=FALSE}
+pander(summary(fit))
+```
+
 #### (IIIb) standard deviation of county level population density
 For each state, for each year, I've calculated the spread of county population densities
-```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="33%", fig.cap="Initial plots and regression looking at using IQR as a measure of clumping"}
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="50%", fig.cap="Initial plots and regression looking at using standard deviation as a measure of clumping"}
 
 ggplot(DemYearlyResults) +
-  aes(x = density_sd, y = proportion) +
+  aes(x = density_sd, y = ppr) +
   geom_point(aes(size = seats), alpha = 0.5) +
   geom_text(aes(label=state), size = 2, hjust=-0.5, vjust=-.5) +
   geom_smooth(method=lm, se=FALSE) +
   theme_bw()
 ggplot(DemYearlyResults) +
-  aes(x = density_sd, y = proportion, color=who) +
+  aes(x = density_sd, y = ppr, color=who) +
   geom_point(aes(size = seats), alpha = 0.5) +
   geom_text(aes(label=state), size = 2, hjust=-0.5, vjust=-.5) +
   geom_smooth(method=lm, se=FALSE) +
   theme_bw()
 
-#do a mean(density_) and mean(proportion) for each state, then label the states...  will help to see state patterns
+#do a mean(density_) and mean(ppr) for each state, then label the states...  will help to see state patterns
 ```
 
 #### (IIIc) comparing state level population density, with county level population density, with Census defined "Urban centers"
 This will be my next clumping variable attempt.
 
-### (IV) Who is making the redistricting decisions
-These are the sources I used to create the group variable "who" for each election decade (2002-2010 & 2012-2018).  The "who" variable attributes the responsibility for the redistricting to either D, R, or I (Democratically controlled state legislatures, Republican controlled state legislatures, or Independent).  I've defined "Independent" as not Democratically controlled nor Republican controlled.  "Independent" includes court ordered redistricting, split-party redistricting, and non-political commissions.  
+### (IV) who is making the redistricting decisions
+These are the sources I used to create the group variable "who" for each election decade (2002-2010 & 2012-2018).  The "who" variable attributes the responsibility for the redistricting to either D, R, or I (Democratically controlled state legislatures, Republican controlled state legislatures, or Other).  I've defined "Other" as not Democratically controlled nor Republican controlled.  "Other" includes court ordered redistricting, split-party redistricting, and non-political commissions.  
 
 https://www.ncsl.org/documents/statevote/2010_Legis_and_State_post.pdf  
 https://www.brennancenter.org/our-work/research-reports/redistricting-and-congressional-control-first-look  
 https://www.brennancenter.org/sites/default/files/2019-08/Report_CGR-2010-edition.pdf  
 
-### (V) EDA looking for a pattern in the number of uncontested and competitive congretional races by year
+### (V) looking for a pattern in the number of uncontested and competitive congretional races by year
 Though there is a great deal that's been written about how political gerrymandering is increasing the number of uncontested elections, and decreasing the number of competitive elections, my analysis doesn't bear this out.  Though my quick look is looking at all elections and is not looking at the grouping variable of who is doing the redistricting.
 ```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="33%", fig.cap="Change in competative and uncontested elections"}
 
@@ -927,7 +937,6 @@ ggplot(YearlySummary) +
   geom_smooth(method=lm) +
   theme_bw()
 fit1 <- lm(uncontested ~ year, data=YearlySummary)
-summary(fit1)
 
 ggplot(YearlySummary) +
   aes(x = year, y = competitive) +
@@ -935,27 +944,32 @@ ggplot(YearlySummary) +
   geom_smooth(method=lm) +
   theme_bw()
 fit2 <- lm(competitive ~ year, data=YearlySummary)
-summary(fit2)
-
 ```
 
-### An example data.frame to think through my model fitting
-```{r echo=FALSE}
-States <- read_csv("States.csv")
 
-edf12 <- data.frame(year = rep("2012", nrow(States)),
-                  state = States,
-                  clumping1 = round(abs(rnorm(nrow(States), 150, 200)), 1),
-                  group = rep(factor(c("Dem", "Rep", "Ind", "Split")), length.out=nrow(States)),
-                  votes = round(60 + rnorm(nrow(States), 0, 10), 1),
-                  seats = round(runif(nrow(States), 0, 100),1))
-edf14 <- data.frame(year = rep("2014", nrow(States)),
-                  state = States,
-                  clumping1 = round(abs(rnorm(nrow(States), 150, 200)), 1),
-                  group = rep(factor(c("Dem", "Rep", "Ind", "Split")), length.out=nrow(States)),
-                  votes = round(60 + rnorm(nrow(States), 0, 10), 1),
-                  seats = round(runif(nrow(States), 0, 100),1))
-edf <- rbind(edf12, edf14)
+```{r echo=FALSE}
+pander(summary(fit2))
+pander(summary(fit1))
+```
+
+```{r echo=FALSE}
+### An example data.frame to think through my model fitting
+
+# States <- read_csv("States.csv")
+# 
+# edf12 <- data.frame(year = rep("2012", nrow(States)),
+#                   state = States,
+#                   clumping1 = round(abs(rnorm(nrow(States), 150, 200)), 1),
+#                   group = rep(factor(c("Dem", "Rep", "Ind", "Split")), length.out=nrow(States)),
+#                   votes = round(60 + rnorm(nrow(States), 0, 10), 1),
+#                   seats = round(runif(nrow(States), 0, 100),1))
+# edf14 <- data.frame(year = rep("2014", nrow(States)),
+#                   state = States,
+#                   clumping1 = round(abs(rnorm(nrow(States), 150, 200)), 1),
+#                   group = rep(factor(c("Dem", "Rep", "Ind", "Split")), length.out=nrow(States)),
+#                   votes = round(60 + rnorm(nrow(States), 0, 10), 1),
+#                   seats = round(runif(nrow(States), 0, 100),1))
+# edf <- rbind(edf12, edf14)
 
 # ggplot(data=edf) +
 #   geom_point(aes(x=votes, y=seats, color=group)) +
@@ -977,8 +991,10 @@ edf <- rbind(edf12, edf14)
 #  pairs(fit)
 ```
 
-### lmer() code for fitting to DemYearlyResults
+
 ```{r echo=FALSE}
+### lmer() code for fitting to DemYearlyResults
+
 # fit <- lmer(seat_percentage ~ vote_percentage + (1+vote_percentage|who), data=DemYearlyResults)
 # #with edf: unable to evaluate scaled gradientModel failed to converge: degenerate  Hessian with 1 negative eigenvalues
 # 
