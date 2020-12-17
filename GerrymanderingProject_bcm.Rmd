@@ -2,15 +2,13 @@
 title: "It's not fair: gerrymandering by whom?"
 author: "Bruce Mallory"
 date: "12/2/2020"
-output:
-  pdf_document:
-    fig_caption: yes
+output: pdf_document
   
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load("HelpersMG", "readr", "ggplot2", "lmer4", "rstanarm", "dplyr", "stringr", "e1071", "ggrepel", "moderndive", "broom", "tidyr", "knitr", "pander", "kableExtra")
+pacman::p_load("HelpersMG", "readr", "ggplot2", "lmer4", "rstanarm", "dplyr", "stringr", "e1071", "ggrepel", "moderndive", "broom", "tidyr", "knitr", "pander", "kableExtra", "ggpubr")
 options(dplyr.summarise.inform = FALSE)
 
 #moderndive allows geom_parallel_slopes() ... see https://campus.datacamp.com/courses/intermediate-regression-in-r/parallel-slopes-1?ex=1
@@ -555,7 +553,7 @@ clumping2$year <- as.numeric(clumping2$year)
 #clumping3 <-
 ```
 
-```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.pos="H", fig.cap="The Democratic Results data frame"}
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.pos="H"}
 
 ### (1F) put it all together into Results and DemYearlyResults & RepubYearlyResults
 
@@ -676,14 +674,46 @@ kable(head(subset(DemYearlyResults, select=c(year, state, party, seats, who, ppr
 ```
 
 ## EDA
+##### what's the distribution of PPR look like
+Visually the distribution of PPR looks normal, which the exception of the 35 elections where the Democrats won zero of the congressional seats in that state (regardless of their vote percentage).  And when subset the PPR's by quantile, it's clear that with more congretional seats, the results are less varied and move toward a mean PPR of 1 (a politically proportional result).  Finally a Q-Qplot of PPR (and log(PPR)) and a Shapiro-Wilk normality test (p=.00001) show that PPR is normally distributed (noting the exception of the 35 PPR results).  Given this, I am assuming normality of my outcome variable for my regression fitting, and am using PPR instead of log(PPR).
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.pos="H", out.width="50%"}
+ggplot(DemYearlyResults, aes(ppr, color=who)) +
+  geom_histogram(binwidth = .1, fill="cornflowerblue", size=1)  +
+  scale_color_manual(name="who redistricted?", values = c("blue", "green", "red"),
+                     labels= c("Democrats", "Other", "Republicans")) +
+  labs(title="Distribution of ppr for Democrats") +
+  theme_bw()
+
+PlotDems <- DemYearlyResults
+PlotDems$number_of_seats <- Hmisc::cut2(PlotDems$seats, g=5)
+ggplot(PlotDems, aes(x=ppr, fill=number_of_seats)) +
+  geom_histogram(binwidth = .1)  +
+  labs(title="Distribution of ppr for Democrats") +
+  scale_color_manual(name="who redistricted?", values = c("blue", "green", "red"),
+                     labels= c("Democrats", "Other", "Republicans")) +
+  scale_y_continuous(NULL, breaks=NULL) +
+  theme_bw()
+```
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.pos="H", out.width="50%"}
+ggqqplot(DemYearlyResults$ppr) + labs(title="Q-Qplot of ppr")
+ggqqplot(log(DemYearlyResults$ppr+1)) + labs(title="Q-Qplot of log(ppr)")
+
+#shapiro.test(DemYearlyResults$ppr)
+#shapiro.test(log(DemYearlyResults$ppr+1))
+```
+
 ##### who vs. PPR (seat/vote)
 Just looking at the comparison between the three groups who redistricted, it's visually clear that the democrats were advantaged when Democratic controlled states redistricted, and Democrats where disadvantaged when Republican controlled states redistricted.  But we already knew this was true.
 
-```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.height=4, fig.show="hold", fig.cap="PPR (prop_seats / prop_vote) for DEMOCRATS"}
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.height=4, fig.show="hold"}
 
 ggplot(DemYearlyResults, aes(y=ppr, x=who, color=who)) +
   labs(y="PPR (1 = proportionally fair)", 
-       caption="Note: each point represents a state in a given year") +
+       caption="Note: each point represents a state in a given year",
+       title="PPR (prop_seats / prop_vote) for DEMOCRATS") +
   geom_violin(size=1, fill="cornflowerblue") +
   scale_color_manual(name="who redistricted?", values = c("blue", "green", "red"),
                      labels= c("Democrats", "Other", "Republicans")) +
@@ -697,7 +727,7 @@ ggplot(DemYearlyResults, aes(y=ppr, x=who, color=who)) +
 ##### size of district vs. political proportionality (seat/vote)
 In looking at the relationship between the size of the district and PPR, there is no visual pattern in the aggregate.  And the grouped pattern is as expected when the redistricting was not done by either Democrats or Republicans: the size of the seat doesn't appear to influence the "fairness."  But when looking at Democratly controlled redistricting it appears that more seats there are to redistrict the more likely the results advantage the Democrats.  Whereas with Republican controlled redistricting, the opposite appears true. 
 
-```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.pos="H", out.width="50%", fig.cap="How do the number of seats to be redistricted relate to the PPR (proportional-political-representation coefficient)"}
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.pos="H", out.width="50%"}
 ggplot(DemYearlyResults, aes(log(seats), ppr)) +
   geom_point() + geom_smooth(method=lm) +
   geom_abline(slope = 0,
@@ -717,7 +747,8 @@ ggplot(DemYearlyResults, aes(log(seats), ppr, color=who))+
 
 
 This is what it looks like with just the politically redistricted states over the years 2002 to 2018.  I've removed all states where some other entity aside from Democratic or Republican controlled legislatures, did the redistricting.
-```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.height=4, fig.pos="H", fig.cap="What's the pattern with seats and politically controlled redistricting"}
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.height=4, fig.pos="H"}
 
 ggplot(DemYearlyResults[DemYearlyResults$who != "O",], aes(log(seats), ppr)) +
   geom_point() + geom_smooth(method=lm) +
@@ -829,7 +860,7 @@ When "cracking" or "packing," voters are moved into or out of districts to dilut
 ### (III) How to measure clumping.
 I'm still trying to wrap my head around how to appropriately measure "clumping" so that the measurement will have meaning in the context of packing and cracking.
 
-#### (IIIa) EDA to look at the distribution of county densities, to help structure a "clumping" metric
+#### (IIIa) looking at the distribution of county densities, to help structure a "clumping" metric
 ```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="33%"}
 
 StateInfo1 <- dnsty %>%
@@ -870,7 +901,7 @@ ggplot(dnsty, aes(x=DENSITY2002)) +
 ```
 #### (IIIa) IQR of county level population density
 For each state, for each year, I've calculated the spread of county population densities
-```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="50%", fig.cap="Initial plots and regression looking at using IQR as a measure of clumping"}
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="50%"}
 ggplot(DemYearlyResults) +
   aes(x = density_IQR, y = ppr) +
   geom_point(aes(size = seats), alpha = 0.5) +
@@ -899,7 +930,7 @@ pander(summary(fit))
 
 #### (IIIb) standard deviation of county level population density
 For each state, for each year, I've calculated the spread of county population densities
-```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="50%", fig.cap="Initial plots and regression looking at using standard deviation as a measure of clumping"}
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold"}
 
 ggplot(DemYearlyResults) +
   aes(x = density_sd, y = ppr) +
@@ -929,7 +960,7 @@ https://www.brennancenter.org/sites/default/files/2019-08/Report_CGR-2010-editio
 
 ### (V) looking for a pattern in the number of uncontested and competitive congretional races by year
 Though there is a great deal that's been written about how political gerrymandering is increasing the number of uncontested elections, and decreasing the number of competitive elections, my analysis doesn't bear this out.  Though my quick look is looking at all elections and is not looking at the grouping variable of who is doing the redistricting.
-```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="33%", fig.cap="Change in competative and uncontested elections"}
+```{r, echo=FALSE, warning=FALSE, message=FALSE, fig.show="hold", out.width="33%"}
 
 ggplot(YearlySummary) +
   aes(x = year, y = uncontested) +
