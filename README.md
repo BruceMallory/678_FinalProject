@@ -1,5 +1,9 @@
 # 678_MidTermProject
 
+## This project looks at proportional representation by party within states.
+
+### The 
+
 The data was downloaded from the "MIT Election Data + Science Lab":
 https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/IG0UN2
 
