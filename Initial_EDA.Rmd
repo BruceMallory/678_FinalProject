@@ -14,29 +14,21 @@ pacman::p_load("maps","tmap", "tmaptools", "tigris",
 ```{r cars}
 data <- read.csv("dataverse_files/1976-2018-house2.csv")
 data_1976 <- data %>% filter(year==1976)
+
+data_1976 <- data_1976 %>%
+   group_by(state_po,district) %>%
+   mutate(max_st_year_vote = max(candidatevotes, na.rm=T))
+          
+          
+seats_1976 <- data_1976 %>% group_by(state) %>% summarize(seats=length(unique(district)), .groups="drop")
+
 group_cols <- c("state", "party")
-data_1976 %<>% group_by(across(all_of(group_cols))) %>%
+votes_1976 <-data_1976 %>% group_by(across(all_of(group_cols))) %>%
   summarise(votes = sum(candidatevotes), .groups="drop") %>% 
   group_by(state) %>%
-  mutate(total = sum(votes))
+  mutate(state_total = sum(votes), party_percent=round(votes/state_total,2))
 
-
-sums <- data_1976 %>% 
-  group_by(state, total=sum(votes))
-
-totals <- data %>%
-    group_by(state) %>%
-    mutate(total = sum(candidatevotes)) %>%
-    group_by(party, add=TRUE)
-
-%>%
-    mutate(per=paste0(round(100*count/countT,2),'%'))
-
-
-
-state_totals <- data_1976 %>% group_by(state) %>% summarize(total=sum(candidatevotes))
-
-
+a_1976 <- full_join(votes_1976, seats_1976, by="state") %>% mutate(expected_seats=round(party_percent*seats))
 ```
 
 ## Including Plots
