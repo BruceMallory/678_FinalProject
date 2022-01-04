@@ -7,8 +7,7 @@ output:
 
 ## This project looks at proportional representation by party within states.
 
-### The final write-up is coded in "GerrymanderingProject_bcm.RMD" which was knit to a .pdf  
-### "GerrymanderingProject_bcm.pdf"
+### The final write-up is coded in "GerrymanderingProject_bcm.RMD" which was knit to "GerrymanderingProject_bcm.pdf"
 
 The data was downloaded from the "MIT Election Data + Science Lab":  
 https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/IG0UN2
